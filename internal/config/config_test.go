@@ -95,6 +95,8 @@ func TestValidateErrors(t *testing.T) {
 		{"ftp upstream", `{"upstream":{"url":"ftp://x"},"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"]}}`, "upstream.url"},
 		{"missing oauth", `{"oauth":{"scopes":["s"]}}`, "required"},
 		{"both secrets", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","client_secret":"x","client_secret_env":"Y","scopes":["s"]}}`, "mutually exclusive"},
+		{"secret value pasted into env field", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","client_secret_env":"0123456789abcdef0123456789abcdef","scopes":["s"]}}`, "NAME of an environment variable"},
+		{"env field with dashes", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","client_secret_env":"not-a-name","scopes":["s"]}}`, "NAME of an environment variable"},
 		{"empty scopes", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":[]}}`, "scopes"},
 		{"bad callback scheme", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"],"callback_scheme":"gopher"}}`, "callback_scheme"},
 		{"bad auth method", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"],"client_auth_method":"magic"}}`, "client_auth_method"},

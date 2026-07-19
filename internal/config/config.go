@@ -158,6 +158,12 @@ func (c *Config) Validate() error {
 	if c.OAuth.ClientSecret != "" && c.OAuth.ClientSecretEnv != "" {
 		return fmt.Errorf("oauth.client_secret and oauth.client_secret_env are mutually exclusive")
 	}
+	// client_secret_env holds the NAME of an environment variable. A value
+	// that cannot be an env var name is almost certainly the secret itself
+	// pasted into the wrong field — reject it before it leaks anywhere.
+	if c.OAuth.ClientSecretEnv != "" && !isEnvVarName(c.OAuth.ClientSecretEnv) {
+		return fmt.Errorf("oauth.client_secret_env must be the NAME of an environment variable (e.g. SLACK_MCP_EXTENDER_CLIENT_SECRET); if you meant to store the secret value itself, use oauth.client_secret")
+	}
 	if len(c.OAuth.Scopes) == 0 {
 		return fmt.Errorf("oauth.scopes must not be empty")
 	}
@@ -184,6 +190,23 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("timeout_ms must not be negative")
 	}
 	return nil
+}
+
+// isEnvVarName reports whether s is a plausible POSIX environment variable
+// name: letters, digits, and underscores, not starting with a digit.
+func isEnvVarName(s string) bool {
+	for i, r := range s {
+		switch {
+		case r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'):
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return s != ""
 }
 
 // Warnings returns non-fatal advisories for `config validate` output.

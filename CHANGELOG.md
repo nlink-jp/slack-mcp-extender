@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--config` accepts a bare workspace name (resolved in
+  `~/.config/slack-mcp-extender`, `.json` appended automatically) in
+  addition to a path.
 - Live E2E suite (`make e2e`, build-tag gated): drives the built binary
   against the real Slack MCP — transparency, containment denials (no
   Slack side effects), and an opt-in posting test (root + thread

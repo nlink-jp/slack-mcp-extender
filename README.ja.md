@@ -72,6 +72,10 @@ allowed roots を対話的に聞き、config（0600）を書き出して、login
 Claude Desktop 登録スニペットを表示します。手書きよりこちらを推奨。
 フィールドの全容は [config.example.json](config.example.json) を参照。
 
+`--config` はフルパスのほか、**ワークスペース名だけ**でも指定できます —
+`~/.config/slack-mcp-extender` 内で解決され、`.json` は自動補完されます
+（例: `login --config myworkspace` → 同ディレクトリの `myworkspace.json`）。
+
 Slack の user token はワークスペース単位です: **ワークスペースごとに config と
 Claude Desktop の MCP 登録を 1 つずつ**作成してください。
 

@@ -53,13 +53,17 @@ Usage:
   slack-mcp-extender <command> [flags]
 
 Commands:
-  mcp --config <path>      Run the stdio MCP server (transparent proxy + injected upload tools)
+  mcp --config <cfg>       Run the stdio MCP server (transparent proxy + injected upload tools)
   init                     Interactively create a workspace config (allowed_roots, OAuth client)
                            and print the Claude Desktop registration snippet
-  login --config <path>    Run the OAuth authorization_code flow and store tokens
+  login --config <cfg>     Run the OAuth authorization_code flow and store tokens
                            (once per workspace)
   config <show|validate>   Show / validate a workspace config
   version                  Print the version
+
+--config accepts a path, or a bare workspace name resolved in
+~/.config/slack-mcp-extender (".json" appended automatically), so
+`+"`login --config myworkspace`"+` finds myworkspace.json there.
 
 Slack user tokens are workspace-scoped: create one config per workspace and
 register one MCP server per workspace in Claude Desktop.

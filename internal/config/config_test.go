@@ -115,6 +115,66 @@ func TestValidateErrors(t *testing.T) {
 	}
 }
 
+func TestResolveConfigArg(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	defDir := filepath.Join(home, ".config", "slack-mcp-extender")
+	if err := os.MkdirAll(defDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"nlink-jp.json", "exact.conf"} {
+		if err := os.WriteFile(filepath.Join(defDir, f), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("path with separator passes through", func(t *testing.T) {
+		got, err := ResolveConfigArg("/some/where/ws.json")
+		if err != nil || got != "/some/where/ws.json" {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+	t.Run("existing cwd file passes through", func(t *testing.T) {
+		cwd := t.TempDir()
+		t.Chdir(cwd)
+		if err := os.WriteFile(filepath.Join(cwd, "local.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := ResolveConfigArg("local.json")
+		if err != nil || got != "local.json" {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+	t.Run("bare name with extension resolves in default dir", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		got, err := ResolveConfigArg("nlink-jp.json")
+		if err != nil || got != filepath.Join(defDir, "nlink-jp.json") {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+	t.Run("bare name gains .json suffix", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		got, err := ResolveConfigArg("nlink-jp")
+		if err != nil || got != filepath.Join(defDir, "nlink-jp.json") {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+	t.Run("non-json extension resolved exactly", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		got, err := ResolveConfigArg("exact.conf")
+		if err != nil || got != filepath.Join(defDir, "exact.conf") {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+	t.Run("not found lists candidates", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		_, err := ResolveConfigArg("missing")
+		if err == nil || !strings.Contains(err.Error(), defDir) {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
 func TestResolveClientSecret(t *testing.T) {
 	o := &OAuth{ClientSecret: "literal"}
 	if got := o.ResolveClientSecret(); got != "literal" {

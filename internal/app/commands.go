@@ -20,7 +20,7 @@ import (
 func parseConfigFlag(name string, args []string, stderr io.Writer) (string, bool) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	cfgPath := fs.String("config", "", "path to the workspace config file")
+	cfgPath := fs.String("config", "", "workspace config: a path, or a bare name resolved in "+"~/.config/slack-mcp-extender")
 	if err := fs.Parse(args); err != nil {
 		return "", false
 	}
@@ -28,7 +28,12 @@ func parseConfigFlag(name string, args []string, stderr io.Writer) (string, bool
 		fmt.Fprintf(stderr, "%s: --config is required (one config per Slack workspace)\n", name)
 		return "", false
 	}
-	return *cfgPath, true
+	resolved, err := config.ResolveConfigArg(*cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", name, err)
+		return "", false
+	}
+	return resolved, true
 }
 
 // runMCP starts the stdio MCP server: transparent proxy + injected tools.

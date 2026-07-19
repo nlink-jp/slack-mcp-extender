@@ -74,6 +74,10 @@ the login command plus the Claude Desktop registration snippet. Prefer it
 over hand-editing; [config.example.json](config.example.json) documents the
 full field set.
 
+`--config` accepts a full path, or a bare workspace name resolved in
+`~/.config/slack-mcp-extender` (`.json` appended automatically):
+`login --config myworkspace` finds `myworkspace.json` there.
+
 Slack user tokens are workspace-scoped: create **one config and one Claude
 Desktop MCP registration per workspace**.
 

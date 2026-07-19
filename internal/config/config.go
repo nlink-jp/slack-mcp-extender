@@ -235,6 +235,45 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// DefaultConfigDir returns the default per-workspace config directory
+// (~/.config/slack-mcp-extender). init writes there by default, and bare
+// --config names resolve against it.
+func DefaultConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "slack-mcp-extender"), nil
+}
+
+// ResolveConfigArg resolves a --config argument. A value containing a path
+// separator — or naming an existing file — is used as a path, unchanged.
+// Anything else is treated as a workspace config name and looked up in
+// DefaultConfigDir, with a .json suffix appended when absent, so
+// `--config nlink-jp` finds ~/.config/slack-mcp-extender/nlink-jp.json.
+func ResolveConfigArg(arg string) (string, error) {
+	if strings.ContainsRune(arg, os.PathSeparator) {
+		return arg, nil
+	}
+	if _, err := os.Stat(arg); err == nil {
+		return arg, nil
+	}
+	dir, err := DefaultConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve config %q: %w", arg, err)
+	}
+	candidates := []string{filepath.Join(dir, arg)}
+	if filepath.Ext(arg) != ".json" {
+		candidates = append(candidates, filepath.Join(dir, arg+".json"))
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("config %q not found (looked in the current directory and %s)", arg, strings.Join(candidates, ", "))
+}
+
 // isEnvVarName reports whether s is a plausible POSIX environment variable
 // name: letters, digits, and underscores, not starting with a digit.
 func isEnvVarName(s string) bool {

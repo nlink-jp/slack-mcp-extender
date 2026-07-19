@@ -47,7 +47,12 @@ func runInit(stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
-	defaultPath := filepath.Join(home, ".config", "slack-mcp-extender", name+".json")
+	defaultDir, err := config.DefaultConfigDir()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitError
+	}
+	defaultPath := filepath.Join(defaultDir, name+".json")
 	cfgPath := expandTilde(ask("Config file path", defaultPath), home)
 	if _, err := os.Stat(cfgPath); err == nil {
 		fmt.Fprintf(stderr, "init: %s already exists — refusing to overwrite (remove it first, or pick another path)\n", cfgPath)

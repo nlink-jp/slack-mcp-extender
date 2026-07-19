@@ -17,7 +17,7 @@ PLATFORMS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: build build-all test lint check package clean help
+.PHONY: build build-all test lint check e2e package clean help
 
 ## build: Build for the current platform
 build:
@@ -44,6 +44,12 @@ lint:
 
 ## check: Run lint + test + build-all
 check: lint test build-all
+
+## e2e: Live end-to-end vs the real Slack MCP (network required;
+## SLACK_MCP_EXTENDER_E2E_CONFIG must point at a logged-in workspace
+## config; set SLACK_MCP_EXTENDER_E2E_CHANNEL to also run the posting test)
+e2e: build
+	go test -tags e2e -count=1 -v ./e2e/...
 
 ## package: Build all platforms, archive with version suffix (zip for
 ## darwin/windows, tar.gz for linux), bundle the canonical binary +

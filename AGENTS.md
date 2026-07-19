@@ -16,19 +16,26 @@ size cap) because the tool is otherwise an exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
 full new build with no governance machinery. Zero external dependencies.
 
-**Status: Phase 1 core implemented** (proxy, OAuth login, injected tools,
-containment; ~90% coverage per package). Not yet E2E-verified against a
-real workspace or released. `init` (interactive config scaffolding) is
-Phase 2 (see the RFP under `docs/`).
+**Status: core + init implemented, live-E2E verified** (proxy, OAuth
+login, injected tools, containment, interactive `init`; ~90% coverage per
+package; real-workspace E2E passed 2026-07-20 and is codified in `e2e/`).
+Not yet released (see the RFP under `docs/`).
 
 ## Build & test
 
 ```bash
 make build      # → dist/slack-mcp-extender  (NEVER `go build` directly)
-make test       # go test -race -cover ./...
+make test       # go test -race -cover ./...  (offline; mocked upstream)
 make check      # lint + test + build-all
 make build-all  # cross-compile linux/{amd64,arm64}, darwin/arm64, windows/amd64
+make e2e        # LIVE tests vs the real Slack MCP (see below)
 ```
+
+Live E2E (`make e2e`, `//go:build e2e` in `e2e/`): requires
+`SLACK_MCP_EXTENDER_E2E_CONFIG` pointing at a logged-in workspace config;
+runs transparency + containment-denial tests (no Slack side effects).
+Additionally set `SLACK_MCP_EXTENDER_E2E_CHANNEL` (channel ID) to run the
+posting test (real root + thread attachments).
 
 Go 1.25+. **No external dependencies** — standard library only.
 Module path: `github.com/nlink-jp/slack-mcp-extender`.

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
-	"github.com/nlink-jp/slack-mcp-extender/internal/upload"
+	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
 // mockUpstream is an in-memory transport.Transport.
@@ -74,12 +74,12 @@ func (m *mockUpstream) sentLines() []string {
 // stubUploader records the upload request and returns a canned result.
 type stubUploader struct {
 	mu  sync.Mutex
-	req *upload.Request
-	res *upload.Result
+	req *transfer.UploadRequest
+	res *transfer.UploadResult
 	err error
 }
 
-func (s *stubUploader) Upload(r upload.Request) (*upload.Result, error) {
+func (s *stubUploader) Upload(r transfer.UploadRequest) (*transfer.UploadResult, error) {
 	s.mu.Lock()
 	s.req = &r
 	s.mu.Unlock()
@@ -169,7 +169,7 @@ func testInjected(t *testing.T, uploader FileUploader) (*InjectedTools, string) 
 	return &InjectedTools{
 		Policy:   policy,
 		Uploader: uploader,
-		Audit:    &upload.AuditLog{Path: filepath.Join(root, "..", "audit.jsonl")},
+		Audit:    &transfer.AuditLog{Path: filepath.Join(root, "..", "audit.jsonl")},
 	}, root
 }
 
@@ -249,7 +249,7 @@ func TestServerInitiatedRequestRoundtrip(t *testing.T) {
 // --- tools/list merge ---
 
 func TestToolsListMergeInjectsAndPreserves(t *testing.T) {
-	injected, _ := testInjected(t, &stubUploader{res: &upload.Result{}})
+	injected, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	h := newHarness(t, injected, 1000)
 	h.up.respond = func([]byte) [][]byte {
 		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"slack_search","title":"Search","annotations":{"readOnlyHint":true}}],"nextCursor":"c1"}}`)}
@@ -288,7 +288,7 @@ func TestToolsListMergeInjectsAndPreserves(t *testing.T) {
 }
 
 func TestToolsListErrorPassesThrough(t *testing.T) {
-	injected, _ := testInjected(t, &stubUploader{res: &upload.Result{}})
+	injected, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	h := newHarness(t, injected, 1000)
 	h.up.respond = func([]byte) [][]byte {
 		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"upstream sad"}}`)}
@@ -303,7 +303,7 @@ func TestToolsListErrorPassesThrough(t *testing.T) {
 // --- tools/call routing ---
 
 func TestToolsCallUpstreamToolForwarded(t *testing.T) {
-	injected, _ := testInjected(t, &stubUploader{res: &upload.Result{}})
+	injected, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	h := newHarness(t, injected, 1000)
 	h.up.respond = func([]byte) [][]byte {
 		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"hits"}]}}`)}
@@ -321,7 +321,7 @@ func TestToolsCallUpstreamToolForwarded(t *testing.T) {
 }
 
 func TestToolsCallInjectedHandledLocally(t *testing.T) {
-	stub := &stubUploader{res: &upload.Result{FileID: "F42", Filename: "r.txt", Size: 2}}
+	stub := &stubUploader{res: &transfer.UploadResult{FileID: "F42", Filename: "r.txt", Size: 2}}
 	injected, root := testInjected(t, stub)
 	h := newHarness(t, injected, 1000)
 
@@ -350,7 +350,7 @@ func TestToolsCallInjectedHandledLocally(t *testing.T) {
 }
 
 func TestToolsCallInjectedThread(t *testing.T) {
-	stub := &stubUploader{res: &upload.Result{FileID: "F1"}}
+	stub := &stubUploader{res: &transfer.UploadResult{FileID: "F1"}}
 	injected, root := testInjected(t, stub)
 	h := newHarness(t, injected, 1000)
 
@@ -372,7 +372,7 @@ func TestToolsCallInjectedThread(t *testing.T) {
 }
 
 func TestToolsCallInjectedPathDenied(t *testing.T) {
-	stub := &stubUploader{res: &upload.Result{}}
+	stub := &stubUploader{res: &transfer.UploadResult{}}
 	injected, root := testInjected(t, stub)
 	h := newHarness(t, injected, 1000)
 

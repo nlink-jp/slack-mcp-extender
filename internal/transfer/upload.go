@@ -7,7 +7,7 @@
 //
 // The uploader authenticates with the same TokenProvider as the proxy
 // connection: one user token for everything.
-package upload
+package transfer
 
 import (
 	"bytes"
@@ -42,16 +42,16 @@ func (e *SlackError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Method, e.Reason)
 }
 
-// Uploader performs external uploads against the Slack Web API.
-type Uploader struct {
+// Client performs file transfers (both directions) against the Slack Web API.
+type Client struct {
 	APIBase string       // "" means DefaultAPIBase
 	Client  *http.Client // nil means http.DefaultClient
 	Tokens  TokenProvider
 }
 
-// Request describes one upload. Path must already have passed containment —
+// UploadRequest describes one upload. Path must already have passed containment —
 // this package never applies policy, it only executes.
-type Request struct {
+type UploadRequest struct {
 	Path      string // canonical path of the file to upload
 	Filename  string // display name; "" means basename of Path
 	ChannelID string // required: the share target
@@ -59,8 +59,8 @@ type Request struct {
 	ThreadTS  string // optional: share as a reply to this thread
 }
 
-// Result is the successful outcome.
-type Result struct {
+// UploadResult is the successful outcome.
+type UploadResult struct {
 	FileID    string `json:"file_id"`
 	Filename  string `json:"filename"`
 	Size      int64  `json:"size"`
@@ -69,7 +69,7 @@ type Result struct {
 }
 
 // Upload runs the 3-step flow.
-func (u *Uploader) Upload(req Request) (*Result, error) {
+func (u *Client) Upload(req UploadRequest) (*UploadResult, error) {
 	if req.ChannelID == "" {
 		return nil, fmt.Errorf("channel_id is required")
 	}
@@ -141,7 +141,7 @@ func (u *Uploader) Upload(req Request) (*Result, error) {
 		return nil, err
 	}
 
-	return &Result{
+	return &UploadResult{
 		FileID:    urlResp.FileID,
 		Filename:  filename,
 		Size:      fi.Size(),
@@ -154,7 +154,7 @@ func (u *Uploader) Upload(req Request) (*Result, error) {
 // {"ok":...} envelope into out (which may be nil). Auth-revocation errors
 // invalidate the token and retry once — Slack signals these inside a
 // HTTP 200 envelope, not as HTTP 401.
-func (u *Uploader) apiCall(method, apiMethod string, query url.Values, jsonBody any, out any) error {
+func (u *Client) apiCall(method, apiMethod string, query url.Values, jsonBody any, out any) error {
 	retried := false
 	for {
 		err := u.apiCallOnce(method, apiMethod, query, jsonBody, out)
@@ -168,7 +168,7 @@ func (u *Uploader) apiCall(method, apiMethod string, query url.Values, jsonBody 
 	}
 }
 
-func (u *Uploader) apiCallOnce(method, apiMethod string, query url.Values, jsonBody any, out any) error {
+func (u *Client) apiCallOnce(method, apiMethod string, query url.Values, jsonBody any, out any) error {
 	endpoint := u.apiBase() + "/" + apiMethod
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -232,14 +232,14 @@ func (u *Uploader) apiCallOnce(method, apiMethod string, query url.Values, jsonB
 	return nil
 }
 
-func (u *Uploader) apiBase() string {
+func (u *Client) apiBase() string {
 	if u.APIBase != "" {
 		return u.APIBase
 	}
 	return DefaultAPIBase
 }
 
-func (u *Uploader) client() *http.Client {
+func (u *Client) client() *http.Client {
 	if u.Client != nil {
 		return u.Client
 	}

@@ -40,6 +40,8 @@ const (
 	ReasonNotRegularFile  = "not_regular_file"
 	ReasonHiddenComponent = "hidden_component"
 	ReasonTooLarge        = "too_large"
+	ReasonAlreadyExists   = "already_exists"
+	ReasonBadFilename     = "bad_filename"
 )
 
 // Violation is a policy rejection. It is an error so callers can return it
@@ -206,4 +208,140 @@ func (p *Policy) Resolve(workspaceDir, file string) (string, error) {
 	}
 
 	return canonical, nil
+}
+
+// MaxSize returns the configured size cap in bytes (<= 0 means no cap).
+func (p *Policy) MaxSize() int64 {
+	return p.maxSize
+}
+
+// SanitizeFilename reduces an untrusted filename (agent-supplied, or taken
+// from Slack file metadata — attacker-controllable data) to a bare base
+// component: no separators, no parent references, no control characters.
+// The hidden-component rule is enforced separately by ResolveNewFile.
+func SanitizeFilename(name string) (string, error) {
+	base := filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	if base == "." || base == ".." || base == string(filepath.Separator) || base == "" {
+		return "", fmt.Errorf("filename %q reduces to no usable name", name)
+	}
+	for _, r := range base {
+		if r < 0x20 || r == 0x7f {
+			return "", fmt.Errorf("filename %q contains control characters", name)
+		}
+	}
+	return base, nil
+}
+
+// ResolveNewFile validates a destination for a NEW file (the write-side
+// mirror of Resolve). destDir may be absolute or relative to workspaceDir;
+// it must exist, canonicalize into an allowed root, and — unless
+// allow_hidden is set — contribute no hidden component below the matched
+// root. filename is sanitized to a base component; the target must not
+// already exist. Returns the canonical target path to create.
+func (p *Policy) ResolveNewFile(workspaceDir, destDir, filename string) (string, error) {
+	if len(p.roots) == 0 {
+		return "", &Violation{
+			Reason: ReasonNoRoots,
+			Path:   destDir,
+			Detail: "no allowed_roots configured; file access is denied by default (register roots via the operator config)",
+		}
+	}
+
+	base, err := SanitizeFilename(filename)
+	if err != nil {
+		return "", &Violation{
+			Reason: ReasonBadFilename,
+			Path:   filename,
+			Roots:  p.Roots(),
+			Detail: err.Error(),
+		}
+	}
+
+	raw := destDir
+	if !filepath.IsAbs(raw) {
+		if workspaceDir == "" {
+			return "", &Violation{
+				Reason: ReasonNotAbsolute,
+				Path:   destDir,
+				Roots:  p.Roots(),
+				Detail: fmt.Sprintf("relative dest_dir %q requires workspace_dir", destDir),
+			}
+		}
+		if !filepath.IsAbs(workspaceDir) {
+			return "", &Violation{
+				Reason: ReasonNotAbsolute,
+				Path:   workspaceDir,
+				Roots:  p.Roots(),
+				Detail: fmt.Sprintf("workspace_dir %q must be absolute", workspaceDir),
+			}
+		}
+		raw = filepath.Join(workspaceDir, raw)
+	}
+
+	// The parent directory must exist so it can be canonicalized — all
+	// later checks run on the real path.
+	canonicalDir, err := filepath.EvalSymlinks(filepath.Clean(raw))
+	if err != nil {
+		return "", &Violation{
+			Reason: ReasonNotFound,
+			Path:   raw,
+			Roots:  p.Roots(),
+			Detail: fmt.Sprintf("cannot resolve dest_dir %q: %v", raw, err),
+		}
+	}
+	fi, err := os.Stat(canonicalDir)
+	if err != nil || !fi.IsDir() {
+		return "", &Violation{
+			Reason: ReasonNotFound,
+			Path:   canonicalDir,
+			Roots:  p.Roots(),
+			Detail: fmt.Sprintf("dest_dir %q is not an existing directory", raw),
+		}
+	}
+
+	matchedRoot := ""
+	for _, root := range p.roots {
+		if rel, err := filepath.Rel(root, canonicalDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			matchedRoot = root
+			break
+		}
+	}
+	if matchedRoot == "" {
+		return "", &Violation{
+			Reason: ReasonOutsideRoots,
+			Path:   canonicalDir,
+			Roots:  p.Roots(),
+			Detail: fmt.Sprintf("dest_dir %q resolves outside every allowed root", raw),
+		}
+	}
+
+	target := filepath.Join(canonicalDir, base)
+
+	// Hidden components below the matched root, including the new basename.
+	if !p.allowHidden {
+		rel, _ := filepath.Rel(matchedRoot, target)
+		for component := range strings.SplitSeq(rel, string(filepath.Separator)) {
+			if strings.HasPrefix(component, ".") {
+				return "", &Violation{
+					Reason: ReasonHiddenComponent,
+					Path:   target,
+					Roots:  p.Roots(),
+					Detail: fmt.Sprintf("path component %q below allowed root is hidden (set allow_hidden to permit)", component),
+				}
+			}
+		}
+	}
+
+	// Never overwrite: Lstat so even a dangling symlink at the target
+	// counts as occupied.
+	if _, err := os.Lstat(target); err == nil {
+		return "", &Violation{
+			Reason: ReasonAlreadyExists,
+			Path:   target,
+			Roots:  p.Roots(),
+			Detail: fmt.Sprintf("%q already exists; choose another filename", target),
+		}
+	}
+
+	return target, nil
 }

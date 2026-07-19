@@ -277,6 +277,132 @@ func TestNewPolicyValidation(t *testing.T) {
 	}
 }
 
+// --- write-side (ResolveNewFile) ---
+
+func TestResolveNewFileHappyPath(t *testing.T) {
+	root := canonTemp(t)
+	p := mustPolicy(t, []string{root}, false, 0)
+	got, err := p.ResolveNewFile("", root, "report.pdf")
+	if err != nil {
+		t.Fatalf("ResolveNewFile: %v", err)
+	}
+	if want := filepath.Join(root, "report.pdf"); got != want {
+		t.Errorf("target = %q, want %q", got, want)
+	}
+}
+
+func TestResolveNewFileWorkspaceRelative(t *testing.T) {
+	root := canonTemp(t)
+	sub := filepath.Join(root, "session", "in")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := mustPolicy(t, []string{root}, false, 0)
+	got, err := p.ResolveNewFile(filepath.Join(root, "session"), "in", "data.bin")
+	if err != nil {
+		t.Fatalf("ResolveNewFile: %v", err)
+	}
+	if want := filepath.Join(sub, "data.bin"); got != want {
+		t.Errorf("target = %q, want %q", got, want)
+	}
+}
+
+func TestResolveNewFileDenials(t *testing.T) {
+	base := canonTemp(t)
+	root := filepath.Join(base, "allowed")
+	if err := os.MkdirAll(filepath.Join(root, ".hidden-sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "taken.txt"), "x")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A symlinked escape hatch inside the root.
+	link := filepath.Join(root, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	// A dangling symlink occupying a target name.
+	if err := os.Symlink(filepath.Join(base, "nowhere"), filepath.Join(root, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+
+	p := mustPolicy(t, []string{root}, false, 0)
+	tests := []struct {
+		name             string
+		wsDir, dir, file string
+		reason           string
+	}{
+		{"no roots handled separately", "", "", "", ""}, // placeholder, skipped below
+		{"outside root", "", outside, "f.txt", ReasonOutsideRoots},
+		{"traversal via dest_dir", "", filepath.Join(root, ".."), "f.txt", ReasonOutsideRoots},
+		{"symlink escape dir", "", link, "f.txt", ReasonOutsideRoots},
+		{"missing dest dir", "", filepath.Join(root, "nope"), "f.txt", ReasonNotFound},
+		{"relative without workspace", "", "in", "f.txt", ReasonNotAbsolute},
+		{"hidden dest dir", "", filepath.Join(root, ".hidden-sub"), "f.txt", ReasonHiddenComponent},
+		{"hidden filename", "", root, ".env", ReasonHiddenComponent},
+		{"traversal filename becomes base", "", root, "../taken.txt", ReasonAlreadyExists},
+		{"existing target", "", root, "taken.txt", ReasonAlreadyExists},
+		{"dangling symlink target occupied", "", root, "dangling", ReasonAlreadyExists},
+		{"empty filename", "", root, "", ReasonBadFilename},
+		{"dot filename", "", root, "..", ReasonBadFilename},
+		{"control chars", "", root, "a\x00b", ReasonBadFilename},
+	}
+	for _, tt := range tests {
+		if tt.reason == "" {
+			continue
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := p.ResolveNewFile(tt.wsDir, tt.dir, tt.file)
+			wantViolation(t, err, tt.reason)
+		})
+	}
+
+	// Deny-by-default with no roots.
+	empty := mustPolicy(t, nil, false, 0)
+	_, err := empty.ResolveNewFile("", root, "f.txt")
+	wantViolation(t, err, ReasonNoRoots)
+}
+
+func TestResolveNewFileSlackFilenameNeutralized(t *testing.T) {
+	// A hostile Slack-supplied filename can influence the NAME only, never
+	// the directory: path components are stripped to the base.
+	root := canonTemp(t)
+	p := mustPolicy(t, []string{root}, false, 0)
+	got, err := p.ResolveNewFile("", root, "../../etc/passwd")
+	if err != nil {
+		t.Fatalf("ResolveNewFile: %v", err)
+	}
+	if want := filepath.Join(root, "passwd"); got != want {
+		t.Errorf("target = %q, want %q (name-only influence)", got, want)
+	}
+	// Backslash-separated variants are neutralized too.
+	got, err = p.ResolveNewFile("", root, `..\..\evil.exe`)
+	if err != nil || filepath.Base(got) != "evil.exe" || filepath.Dir(got) != root {
+		t.Errorf("backslash variant: %q, %v", got, err)
+	}
+}
+
+func TestSanitizeFilename(t *testing.T) {
+	for name, want := range map[string]string{
+		"report.pdf":     "report.pdf",
+		"a/b/c.txt":      "c.txt",
+		"../../etc/hosts": "hosts",
+		`..\..\x.bin`:    "x.bin",
+	} {
+		got, err := SanitizeFilename(name)
+		if err != nil || got != want {
+			t.Errorf("SanitizeFilename(%q) = %q, %v; want %q", name, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", ".", "..", "/", "a\nb"} {
+		if _, err := SanitizeFilename(bad); err == nil {
+			t.Errorf("SanitizeFilename(%q) accepted", bad)
+		}
+	}
+}
+
 func TestViolationErrorAndRootsExposed(t *testing.T) {
 	root := canonTemp(t)
 	p := mustPolicy(t, []string{root}, false, 0)

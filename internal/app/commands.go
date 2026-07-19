@@ -13,7 +13,7 @@ import (
 	"github.com/nlink-jp/slack-mcp-extender/internal/oauth"
 	"github.com/nlink-jp/slack-mcp-extender/internal/proxy"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transport"
-	"github.com/nlink-jp/slack-mcp-extender/internal/upload"
+	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
 // parseConfigFlag parses a --config flag from args.
@@ -93,8 +93,8 @@ func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(strin
 		Upstream: up,
 		Injected: &proxy.InjectedTools{
 			Policy:   policy,
-			Uploader: &upload.Uploader{Tokens: tokens},
-			Audit:    &upload.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
+			Uploader: &transfer.Client{Tokens: tokens},
+			Audit:    &transfer.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
 			Logf:     logf,
 		},
 		In:        in,

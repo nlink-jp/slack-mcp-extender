@@ -6,7 +6,7 @@ import (
 
 	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/jsonrpc"
-	"github.com/nlink-jp/slack-mcp-extender/internal/upload"
+	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
 // Injected tool names.
@@ -16,9 +16,9 @@ const (
 )
 
 // FileUploader abstracts the Slack upload flow (satisfied by
-// *upload.Uploader; stubbed in tests).
+// *transfer.Client; stubbed in tests).
 type FileUploader interface {
-	Upload(req upload.Request) (*upload.Result, error)
+	Upload(req transfer.UploadRequest) (*transfer.UploadResult, error)
 }
 
 // InjectedTools holds the local tool implementations added to the upstream
@@ -26,7 +26,7 @@ type FileUploader interface {
 type InjectedTools struct {
 	Policy   *containment.Policy
 	Uploader FileUploader
-	Audit    *upload.AuditLog
+	Audit    *transfer.AuditLog
 	// Logf receives non-fatal diagnostics (audit write failures).
 	Logf func(format string, args ...any)
 }
@@ -97,7 +97,7 @@ func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolR
 	if err != nil {
 		var v *containment.Violation
 		if errors.As(err, &v) {
-			it.audit(upload.AuditEntry{
+			it.audit(transfer.AuditEntry{
 				Tool: name, Path: v.Path, ChannelID: channelID, ThreadTS: threadTS,
 				Outcome: "denied", Error: v.Reason,
 			})
@@ -110,7 +110,7 @@ func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolR
 		return errorResult("internal_error", err.Error(), nil)
 	}
 
-	result, err := it.Uploader.Upload(upload.Request{
+	result, err := it.Uploader.Upload(transfer.UploadRequest{
 		Path:      canonical,
 		Filename:  filename,
 		ChannelID: channelID,
@@ -118,11 +118,11 @@ func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolR
 		ThreadTS:  threadTS,
 	})
 	if err != nil {
-		it.audit(upload.AuditEntry{
+		it.audit(transfer.AuditEntry{
 			Tool: name, Path: canonical, ChannelID: channelID, ThreadTS: threadTS,
 			Outcome: "error", Error: err.Error(),
 		})
-		var se *upload.SlackError
+		var se *transfer.SlackError
 		if errors.As(err, &se) {
 			return errorResult("slack_api_error", se.Error(), map[string]any{
 				"method": se.Method,
@@ -132,7 +132,7 @@ func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolR
 		return errorResult("upload_failed", err.Error(), nil)
 	}
 
-	it.audit(upload.AuditEntry{
+	it.audit(transfer.AuditEntry{
 		Tool: name, Path: canonical, Size: result.Size, ChannelID: result.ChannelID,
 		ThreadTS: result.ThreadTS, FileID: result.FileID, Outcome: "ok",
 	})
@@ -150,7 +150,7 @@ func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolR
 	}
 }
 
-func (it *InjectedTools) audit(entry upload.AuditEntry) {
+func (it *InjectedTools) audit(entry transfer.AuditEntry) {
 	if err := it.Audit.Append(entry); err != nil && it.Logf != nil {
 		// Audit failures are surfaced but never turn an outcome into a
 		// reported failure.

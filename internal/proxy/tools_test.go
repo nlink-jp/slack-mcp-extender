@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nlink-jp/slack-mcp-extender/internal/upload"
+	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
 // Direct Handle tests — argument validation and error shaping without the
@@ -26,7 +26,7 @@ func handleArgs(t *testing.T, it *InjectedTools, tool string, args map[string]an
 }
 
 func TestHandleMissingRequiredArgs(t *testing.T) {
-	it, _ := testInjected(t, &stubUploader{res: &upload.Result{}})
+	it, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 
 	isErr, payload := handleArgs(t, it, ToolUploadFile, map[string]any{"file": "/x"})
 	if !isErr || payload["code"] != "invalid_arguments" {
@@ -45,7 +45,7 @@ func TestHandleMissingRequiredArgs(t *testing.T) {
 }
 
 func TestHandleNonStringArgsRejected(t *testing.T) {
-	it, _ := testInjected(t, &stubUploader{res: &upload.Result{}})
+	it, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	// Numeric channel_id type-asserts to "" and fails required validation
 	// instead of panicking.
 	isErr, payload := handleArgs(t, it, ToolUploadFile, map[string]any{"channel_id": 123, "file": "/x"})
@@ -55,7 +55,7 @@ func TestHandleNonStringArgsRejected(t *testing.T) {
 }
 
 func TestHandlePathDeniedDetails(t *testing.T) {
-	it, root := testInjected(t, &stubUploader{res: &upload.Result{}})
+	it, root := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	isErr, payload := handleArgs(t, it, ToolUploadFile, map[string]any{
 		"channel_id": "C1", "file": filepath.Join(root, "missing.txt"),
 	})
@@ -76,7 +76,7 @@ func TestHandlePathDeniedDetails(t *testing.T) {
 }
 
 func TestHandleSlackErrorShaping(t *testing.T) {
-	stub := &stubUploader{err: &upload.SlackError{Method: "files.completeUploadExternal", Reason: "not_in_channel"}}
+	stub := &stubUploader{err: &transfer.SlackError{Method: "files.completeUploadExternal", Reason: "not_in_channel"}}
 	it, root := testInjected(t, stub)
 	file := filepath.Join(root, "f.txt")
 	writeTestFile(t, file)

@@ -1,4 +1,4 @@
-package upload
+package transfer
 
 import (
 	"encoding/json"
@@ -74,8 +74,8 @@ func newFakeSlack(t *testing.T) *fakeSlack {
 	return f
 }
 
-func (f *fakeSlack) uploader(tokens TokenProvider) *Uploader {
-	return &Uploader{APIBase: f.srv.URL + "/api", Tokens: tokens}
+func (f *fakeSlack) uploader(tokens TokenProvider) *Client {
+	return &Client{APIBase: f.srv.URL + "/api", Tokens: tokens}
 }
 
 func testFile(t *testing.T, content string) string {
@@ -92,7 +92,7 @@ func TestUploadRootMessage(t *testing.T) {
 	tokens := &fakeTokens{token: "utok"}
 	path := testFile(t, "a,b\n1,2\n")
 
-	res, err := slack.uploader(tokens).Upload(Request{
+	res, err := slack.uploader(tokens).Upload(UploadRequest{
 		Path: path, ChannelID: "C123", Comment: "weekly report",
 	})
 	if err != nil {
@@ -136,7 +136,7 @@ func TestUploadThreadReply(t *testing.T) {
 	slack := newFakeSlack(t)
 	path := testFile(t, "x")
 
-	res, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{
+	res, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{
 		Path: path, ChannelID: "C123", ThreadTS: "1721355600.000100",
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestUploadThreadReply(t *testing.T) {
 func TestUploadFilenameOverride(t *testing.T) {
 	slack := newFakeSlack(t)
 	path := testFile(t, "x")
-	res, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{
+	res, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{
 		Path: path, ChannelID: "C1", Filename: "shown-name.txt",
 	})
 	if err != nil {
@@ -172,14 +172,14 @@ func TestUploadFilenameOverride(t *testing.T) {
 }
 
 func TestUploadValidation(t *testing.T) {
-	u := &Uploader{}
-	if _, err := u.Upload(Request{Path: "/x"}); err == nil || !strings.Contains(err.Error(), "channel_id") {
+	u := &Client{}
+	if _, err := u.Upload(UploadRequest{Path: "/x"}); err == nil || !strings.Contains(err.Error(), "channel_id") {
 		t.Errorf("missing channel_id: %v", err)
 	}
-	if _, err := u.Upload(Request{ChannelID: "C1"}); err == nil || !strings.Contains(err.Error(), "path") {
+	if _, err := u.Upload(UploadRequest{ChannelID: "C1"}); err == nil || !strings.Contains(err.Error(), "path") {
 		t.Errorf("missing path: %v", err)
 	}
-	if _, err := u.Upload(Request{ChannelID: "C1", Path: filepath.Join(os.TempDir(), "definitely-missing-xyz")}); err == nil {
+	if _, err := u.Upload(UploadRequest{ChannelID: "C1", Path: filepath.Join(os.TempDir(), "definitely-missing-xyz")}); err == nil {
 		t.Error("missing file accepted")
 	}
 }
@@ -187,7 +187,7 @@ func TestUploadValidation(t *testing.T) {
 func TestUploadSlackErrorStep1(t *testing.T) {
 	slack := newFakeSlack(t)
 	slack.getURLResponses = []string{`{"ok":false,"error":"invalid_arguments"}`}
-	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{Path: testFile(t, "x"), ChannelID: "C1"})
+	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{Path: testFile(t, "x"), ChannelID: "C1"})
 	var se *SlackError
 	if !errors.As(err, &se) || se.Method != "files.getUploadURLExternal" || se.Reason != "invalid_arguments" {
 		t.Fatalf("err = %v", err)
@@ -197,7 +197,7 @@ func TestUploadSlackErrorStep1(t *testing.T) {
 func TestUploadHTTPErrorStep2(t *testing.T) {
 	slack := newFakeSlack(t)
 	slack.uploadStatus = http.StatusInternalServerError
-	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{Path: testFile(t, "x"), ChannelID: "C1"})
+	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{Path: testFile(t, "x"), ChannelID: "C1"})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 500") {
 		t.Fatalf("err = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestUploadHTTPErrorStep2(t *testing.T) {
 func TestUploadNotInChannelStep3(t *testing.T) {
 	slack := newFakeSlack(t)
 	slack.completeResponse = `{"ok":false,"error":"not_in_channel"}`
-	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{Path: testFile(t, "x"), ChannelID: "C1"})
+	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{Path: testFile(t, "x"), ChannelID: "C1"})
 	var se *SlackError
 	if !errors.As(err, &se) || se.Reason != "not_in_channel" {
 		t.Fatalf("err = %v", err)
@@ -223,7 +223,7 @@ func TestUploadAuthErrorInvalidatesAndRetriesOnce(t *testing.T) {
 		`{"ok":true,"upload_url":"UPLOAD_URL","file_id":"F9"}`,
 	}
 	tokens := &fakeTokens{token: "t"}
-	res, err := slack.uploader(tokens).Upload(Request{Path: testFile(t, "x"), ChannelID: "C1"})
+	res, err := slack.uploader(tokens).Upload(UploadRequest{Path: testFile(t, "x"), ChannelID: "C1"})
 	if err != nil {
 		t.Fatalf("Upload after auth retry: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestUploadAuthErrorInvalidatesAndRetriesOnce(t *testing.T) {
 func TestUploadAuthErrorNoInfiniteRetry(t *testing.T) {
 	slack := newFakeSlack(t)
 	slack.getURLResponses = []string{`{"ok":false,"error":"invalid_auth"}`}
-	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(Request{Path: testFile(t, "x"), ChannelID: "C1"})
+	_, err := slack.uploader(&fakeTokens{token: "t"}).Upload(UploadRequest{Path: testFile(t, "x"), ChannelID: "C1"})
 	var se *SlackError
 	if !errors.As(err, &se) || se.Reason != "invalid_auth" {
 		t.Fatalf("err = %v", err)

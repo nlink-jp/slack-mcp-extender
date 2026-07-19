@@ -1,0 +1,47 @@
+# Slack App manifest for slack-mcp-extender.
+#
+# Create the app at https://api.slack.com/apps → "Create New App" →
+# "From a manifest" → pick the target workspace → paste this file.
+#
+# Notes:
+#   - User token scopes only: the tool acts as the authorizing user
+#     (matching the official Slack MCP connector's identity). No bot
+#     user, no bot scopes, no Socket Mode.
+#   - redirect_urls must match oauth.callback_port in your config
+#     (default 7777). Slack only accepts https:// here, which is why
+#     the login flow serves a self-signed TLS loopback callback.
+#   - token_rotation_enabled: false issues a non-expiring user token
+#     (no refresh dance); slack-mcp-extender supports rotation too, but
+#     non-rotating is the simplest correct setup for a local tool.
+#   - The scope set below mirrors what the official Slack MCP uses for
+#     reading/searching, plus files:write for the injected upload tools.
+#     Trim read scopes you do not need — files:write is the only one the
+#     upload tools themselves require.
+
+display_information:
+  name: slack-mcp-extender
+  description: Transparent proxy for the official Slack MCP with file-attachment upload tools
+  background_color: "#2c2d30"
+
+oauth_config:
+  redirect_urls:
+    - https://localhost:7777/callback
+  scopes:
+    user:
+      - channels:history
+      - channels:read
+      - chat:write
+      - files:write
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - mpim:history
+      - mpim:read
+      - search:read
+      - users:read
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

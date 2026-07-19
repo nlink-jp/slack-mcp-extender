@@ -1,0 +1,33 @@
+{
+  "upstream": {
+    "url": "https://mcp.slack.com/mcp"
+  },
+  "oauth": {
+    "authorize_url": "https://slack.com/oauth/v2_user/authorize",
+    "token_url": "https://slack.com/api/oauth.v2.user.access",
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret_env": "SLACK_MCP_EXTENDER_CLIENT_SECRET",
+    "scopes": [
+      "channels:history",
+      "channels:read",
+      "chat:write",
+      "files:write",
+      "groups:history",
+      "groups:read",
+      "im:history",
+      "im:read",
+      "mpim:history",
+      "mpim:read",
+      "search:read",
+      "users:read"
+    ],
+    "callback_port": 7777,
+    "callback_scheme": "https",
+    "client_auth_method": "post"
+  },
+  "allowed_roots": [
+    "/absolute/path/to/your/exchange/dir"
+  ],
+  "allow_hidden": false,
+  "max_file_size": 52428800
+}

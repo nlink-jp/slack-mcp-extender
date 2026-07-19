@@ -51,19 +51,29 @@ make test    # go test -race -cover ./...
 署名・notarize 済みのビルド済みバイナリは v0.1.0 リリース時に Releases ページで
 公開予定です。
 
-## 使い方（予定インターフェース）
+## セットアップ
+
+初めての場合は **[Slack セットアップガイド](docs/ja/slack-setup.ja.md)** を
+参照してください — 同梱の [App マニフェスト](docs/slack-app-manifest.yaml)
+からの Slack App 作成、ワークスペース config の作成
+（[config.example.json](config.example.json) から開始）、ログイン、
+Claude Desktop への登録までを段階的に説明しています。
 
 ```bash
-slack-mcp-extender init                    # ワークスペース config を対話的に作成
-slack-mcp-extender login --config <path>   # OAuth（ワークスペースごとに 1 回）
-slack-mcp-extender mcp --config <path>     # stdio MCP サーバー起動
+slack-mcp-extender config validate --config <path>   # config の検証
+slack-mcp-extender login --config <path>             # OAuth（ワークスペースごとに 1 回）
+slack-mcp-extender mcp --config <path>               # stdio MCP サーバー起動
 ```
 
 Slack の user token はワークスペース単位です: **ワークスペースごとに config と
-Claude Desktop の MCP 登録を 1 つずつ**作成してください。
+Claude Desktop の MCP 登録を 1 つずつ**作成してください。（対話的に config を
+生成する `init` は今後実装予定 — 当面は example config をコピーしてください。）
 
 ## ドキュメント
 
+- [Slack セットアップガイド](docs/ja/slack-setup.ja.md)
+  （[English](docs/en/slack-setup.md)）—
+  App マニフェスト: [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 - [RFP（日本語）](docs/ja/slack-mcp-extender-rfp.ja.md) /
   [RFP (English)](docs/en/slack-mcp-extender-rfp.md)
 

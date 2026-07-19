@@ -52,19 +52,29 @@ make test    # go test -race -cover ./...
 Pre-built, signed and notarized binaries will be published on the Releases
 page once v0.1.0 ships.
 
-## Usage (planned surface)
+## Setup
+
+New to slack-mcp-extender? See the **[Slack Setup Guide](docs/en/slack-setup.md)**
+for step-by-step instructions — creating the Slack App from the bundled
+[app manifest](docs/slack-app-manifest.yaml), writing the workspace config
+(start from [config.example.json](config.example.json)), logging in, and
+registering the server in Claude Desktop.
 
 ```bash
-slack-mcp-extender init                    # create a workspace config interactively
-slack-mcp-extender login --config <path>   # OAuth (once per workspace)
-slack-mcp-extender mcp --config <path>     # run the stdio MCP server
+slack-mcp-extender config validate --config <path>   # check the workspace config
+slack-mcp-extender login --config <path>             # OAuth (once per workspace)
+slack-mcp-extender mcp --config <path>               # run the stdio MCP server
 ```
 
 Slack user tokens are workspace-scoped: create **one config and one Claude
-Desktop MCP registration per workspace**.
+Desktop MCP registration per workspace**. (`init` — interactive config
+scaffolding — is planned; copy the example config for now.)
 
 ## Documentation
 
+- [Slack Setup Guide](docs/en/slack-setup.md)
+  ([日本語](docs/ja/slack-setup.ja.md)) —
+  app manifest: [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 - [RFP (English)](docs/en/slack-mcp-extender-rfp.md) /
   [RFP (日本語)](docs/ja/slack-mcp-extender-rfp.ja.md)
 

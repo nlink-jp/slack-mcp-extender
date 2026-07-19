@@ -109,7 +109,7 @@ type OAuth struct {
 	ClientSecretEnv  string   `json:"client_secret_env,omitempty"`
 	Scopes           []string `json:"scopes"`
 	CallbackPort     int      `json:"callback_port,omitempty"`
-	CallbackScheme   string   `json:"callback_scheme,omitempty"`   // "https" (default) or "http"
+	CallbackScheme   string   `json:"callback_scheme,omitempty"`    // "https" (default) or "http"
 	ClientAuthMethod string   `json:"client_auth_method,omitempty"` // "post" (default), "basic", or "none"
 }
 

@@ -81,7 +81,7 @@ func NewResultResponse(id json.RawMessage, result any) (*Message, error) {
 
 // ToolCallParams represents the params of a tools/call request.
 type ToolCallParams struct {
-	Name      string                 `json:"name"`
+	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 

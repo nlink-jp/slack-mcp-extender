@@ -386,10 +386,10 @@ func TestResolveNewFileSlackFilenameNeutralized(t *testing.T) {
 
 func TestSanitizeFilename(t *testing.T) {
 	for name, want := range map[string]string{
-		"report.pdf":     "report.pdf",
-		"a/b/c.txt":      "c.txt",
+		"report.pdf":      "report.pdf",
+		"a/b/c.txt":       "c.txt",
 		"../../etc/hosts": "hosts",
-		`..\..\x.bin`:    "x.bin",
+		`..\..\x.bin`:     "x.bin",
 	} {
 		got, err := SanitizeFilename(name)
 		if err != nil || got != want {

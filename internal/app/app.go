@@ -15,8 +15,9 @@ const (
 	exitError = 2 // usage / validation / operational error
 )
 
-// Run dispatches a subcommand and returns a process exit code.
-func Run(args []string, version string, stdout, stderr io.Writer) int {
+// Run dispatches a subcommand and returns a process exit code. stdin feeds
+// interactive commands (init); stdout/stderr receive command output.
+func Run(args []string, version string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return exitError
@@ -26,7 +27,7 @@ func Run(args []string, version string, stdout, stderr io.Writer) int {
 	case "mcp":
 		return runMCP(rest, stdout, stderr)
 	case "init":
-		return notImplemented(stderr, "init")
+		return runInit(stdin, stdout, stderr)
 	case "login":
 		return runLogin(rest, stdout, stderr)
 	case "config":
@@ -43,12 +44,6 @@ func Run(args []string, version string, stdout, stderr io.Writer) int {
 		usage(stderr)
 		return exitError
 	}
-}
-
-// notImplemented reports a not-yet-implemented subcommand (init is Phase 2).
-func notImplemented(w io.Writer, cmd string) int {
-	fmt.Fprintf(w, "slack-mcp-extender %s: not implemented yet\n", cmd)
-	return exitError
 }
 
 func usage(w io.Writer) {

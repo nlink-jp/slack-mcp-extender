@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `init` command: interactive per-workspace config scaffolding — OAuth
+  client identity, secret storage (environment variable recommended),
+  callback port, and allowed_roots registration — writing a validated
+  0600 config and printing the login command plus the Claude Desktop
+  registration snippet.
 - Phase 1 core: transparent MCP proxy to the official Slack MCP
   (`mcp.slack.com/mcp`, Streamable HTTP/SSE) with two injected tools —
   `upload_file` (root-message attachment) and `upload_file_to_thread`

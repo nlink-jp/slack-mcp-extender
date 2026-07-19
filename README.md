@@ -4,9 +4,8 @@
 > injected upload tools, path containment) is implemented, unit-tested, and
 > **end-to-end verified against a real workspace** (live proxy transparency,
 > root and thread attachments, containment denials with audit records).
-> Not yet released; `init` is not implemented yet — write the workspace
-> config by hand for now. See the [RFP](docs/en/slack-mcp-extender-rfp.md)
-> for the design.
+> Not yet released. See the [RFP](docs/en/slack-mcp-extender-rfp.md) for
+> the design.
 
 A per-workspace MCP proxy that **transparently forwards Claude's official
 Slack MCP** (`mcp.slack.com/mcp`) while **injecting the one capability it
@@ -63,14 +62,20 @@ for step-by-step instructions — creating the Slack App from the bundled
 registering the server in Claude Desktop.
 
 ```bash
+slack-mcp-extender init                              # scaffold a workspace config interactively
 slack-mcp-extender config validate --config <path>   # check the workspace config
 slack-mcp-extender login --config <path>             # OAuth (once per workspace)
 slack-mcp-extender mcp --config <path>               # run the stdio MCP server
 ```
 
+`init` asks for the OAuth client, the secret storage (environment variable
+recommended), and the allowed roots, writes the config (0600), and prints
+the login command plus the Claude Desktop registration snippet. Prefer it
+over hand-editing; [config.example.json](config.example.json) documents the
+full field set.
+
 Slack user tokens are workspace-scoped: create **one config and one Claude
-Desktop MCP registration per workspace**. (`init` — interactive config
-scaffolding — is planned; copy the example config for now.)
+Desktop MCP registration per workspace**.
 
 ## Documentation
 

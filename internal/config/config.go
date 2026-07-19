@@ -25,7 +25,50 @@ const (
 	DefaultMaxFileSize = 50 * 1024 * 1024 // 50 MB
 	DefaultTimeoutMs   = 120000           // upstream request timeout
 	DefaultUpstreamURL = "https://mcp.slack.com/mcp"
+
+	// Slack's user-OAuth endpoints (also recorded in the setup guide and
+	// verified against docs.slack.dev/ai/slack-mcp-server).
+	DefaultAuthorizeURL = "https://slack.com/oauth/v2_user/authorize"
+	DefaultTokenURL     = "https://slack.com/api/oauth.v2.user.access"
+	DefaultCallbackPort = 7777
 )
+
+// DefaultScopes returns the user-token scope set covering every tool of
+// the official Slack MCP server plus files:write for the injected upload
+// tools. Single source of truth for `init` — keep in sync with
+// docs/slack-app-manifest.yaml.
+func DefaultScopes() []string {
+	return []string{
+		"canvases:read",
+		"canvases:write",
+		"channels:history",
+		"channels:read",
+		"channels:write",
+		"chat:write",
+		"emoji:read",
+		"files:read",
+		"files:write",
+		"groups:history",
+		"groups:read",
+		"groups:write",
+		"im:history",
+		"im:read",
+		"im:write",
+		"mpim:history",
+		"mpim:read",
+		"mpim:write",
+		"reactions:write",
+		"search:read",
+		"search:read.files",
+		"search:read.im",
+		"search:read.mpim",
+		"search:read.private",
+		"search:read.public",
+		"search:read.users",
+		"users:read",
+		"users:read.email",
+	}
+}
 
 // Config is one workspace's configuration.
 type Config struct {

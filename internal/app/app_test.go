@@ -26,7 +26,6 @@ func TestRunDispatch(t *testing.T) {
 		{"help", []string{"help"}, exitOK, "Usage:", ""},
 		{"-h alias", []string{"-h"}, exitOK, "Usage:", ""},
 		{"unknown command", []string{"bogus"}, exitError, "", `unknown command "bogus"`},
-		{"init still stub", []string{"init"}, exitError, "", "not implemented"},
 		{"mcp requires config", []string{"mcp"}, exitError, "", "--config is required"},
 		{"login requires config", []string{"login"}, exitError, "", "--config is required"},
 		{"config requires subcommand", []string{"config"}, exitError, "", "subcommand required"},
@@ -36,7 +35,7 @@ func TestRunDispatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			got := Run(tt.args, "v1.2.3", &stdout, &stderr)
+			got := Run(tt.args, "v1.2.3", strings.NewReader(""), &stdout, &stderr)
 			if got != tt.wantExit {
 				t.Errorf("Run(%v) exit = %d, want %d", tt.args, got, tt.wantExit)
 			}
@@ -89,7 +88,7 @@ func writeWorkspaceConfig(t *testing.T) string {
 func TestConfigShowRedactsSecret(t *testing.T) {
 	path := writeWorkspaceConfig(t)
 	var stdout, stderr bytes.Buffer
-	if got := Run([]string{"config", "show", "--config", path}, "v", &stdout, &stderr); got != exitOK {
+	if got := Run([]string{"config", "show", "--config", path}, "v", strings.NewReader(""), &stdout, &stderr); got != exitOK {
 		t.Fatalf("exit = %d (stderr: %s)", got, stderr.String())
 	}
 	out := stdout.String()
@@ -104,7 +103,7 @@ func TestConfigShowRedactsSecret(t *testing.T) {
 func TestConfigValidateReportsWarnings(t *testing.T) {
 	path := writeWorkspaceConfig(t)
 	var stdout, stderr bytes.Buffer
-	if got := Run([]string{"config", "validate", "--config", path}, "v", &stdout, &stderr); got != exitOK {
+	if got := Run([]string{"config", "validate", "--config", path}, "v", strings.NewReader(""), &stdout, &stderr); got != exitOK {
 		t.Fatalf("exit = %d (stderr: %s)", got, stderr.String())
 	}
 	out := stdout.String()
@@ -119,7 +118,7 @@ func TestConfigValidateReportsWarnings(t *testing.T) {
 
 func TestConfigLoadErrorSurfaced(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	got := Run([]string{"config", "validate", "--config", filepath.Join(t.TempDir(), "missing.json")}, "v", &stdout, &stderr)
+	got := Run([]string{"config", "validate", "--config", filepath.Join(t.TempDir(), "missing.json")}, "v", strings.NewReader(""), &stdout, &stderr)
 	if got != exitError || stderr.Len() == 0 {
 		t.Fatalf("exit = %d, stderr = %q", got, stderr.String())
 	}

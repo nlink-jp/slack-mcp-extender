@@ -3,8 +3,8 @@
 > **Status: リリース前。** Phase 1 コア（透過 proxy・OAuth login・注入 upload
 > ツール・パス封じ込め）は実装・単体テスト済みで、**実ワークスペースでの E2E
 > 検証も完了**しています（実 proxy の透過動作・root/thread 添付投稿・封じ込め
-> 拒否と監査記録）。リリースは未了。`init` は未実装のため、当面 config は
-> 手書きしてください。設計は [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
+> 拒否と監査記録）。リリースは未了。設計は
+> [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
 
 Claude の**純正 Slack MCP**（`mcp.slack.com/mcp`）を**完全透過でプロキシ**しつつ、
 純正に欠けている唯一の機能 — **ファイル添付投稿** — を注入する、ワークスペース
@@ -61,14 +61,19 @@ make test    # go test -race -cover ./...
 Claude Desktop への登録までを段階的に説明しています。
 
 ```bash
+slack-mcp-extender init                              # ワークスペース config を対話的に生成
 slack-mcp-extender config validate --config <path>   # config の検証
 slack-mcp-extender login --config <path>             # OAuth（ワークスペースごとに 1 回）
 slack-mcp-extender mcp --config <path>               # stdio MCP サーバー起動
 ```
 
+`init` は OAuth クライアント情報・secret の保管方法（環境変数推奨）・
+allowed roots を対話的に聞き、config（0600）を書き出して、login コマンドと
+Claude Desktop 登録スニペットを表示します。手書きよりこちらを推奨。
+フィールドの全容は [config.example.json](config.example.json) を参照。
+
 Slack の user token はワークスペース単位です: **ワークスペースごとに config と
-Claude Desktop の MCP 登録を 1 つずつ**作成してください。（対話的に config を
-生成する `init` は今後実装予定 — 当面は example config をコピーしてください。）
+Claude Desktop の MCP 登録を 1 つずつ**作成してください。
 
 ## ドキュメント
 

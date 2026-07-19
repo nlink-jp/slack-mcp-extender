@@ -62,8 +62,16 @@ variable, never into a committed file.
 
 ## 3. Write the workspace config
 
-Copy [`config.example.json`](../../config.example.json) to a private
-location, one file per workspace:
+**The easy path** — let `init` scaffold it interactively (client ID, secret
+storage, callback port, allowed roots), validate it, and print the
+follow-up commands:
+
+```bash
+slack-mcp-extender init
+```
+
+**The manual path** — copy [`config.example.json`](../../config.example.json)
+to a private location, one file per workspace:
 
 ```bash
 mkdir -p ~/.config/slack-mcp-extender

@@ -57,8 +57,16 @@ App の **Basic Information → App Credentials** で **Client ID** と
 
 ## 3. ワークスペース config を書く
 
-[`config.example.json`](../../config.example.json) をワークスペースごとに
-1 ファイルずつコピーします:
+**簡単な方法** — `init` に対話的に生成させます（Client ID・secret 保管方法・
+callback ポート・allowed roots を質問し、検証済み config を書き出して
+後続コマンドまで表示します）:
+
+```bash
+slack-mcp-extender init
+```
+
+**手動の方法** — [`config.example.json`](../../config.example.json) を
+ワークスペースごとに 1 ファイルずつコピーします:
 
 ```bash
 mkdir -p ~/.config/slack-mcp-extender

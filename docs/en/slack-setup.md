@@ -11,7 +11,16 @@ workspace you want to use; the Slack App itself (step 1–2) can be shared.
 ## 1. Create the Slack App
 
 You need a Slack App that can issue a **user token** with the scopes in
-[`docs/slack-app-manifest.yaml`](../slack-app-manifest.yaml).
+[`docs/slack-app-manifest.yaml`](../slack-app-manifest.yaml). The manifest's
+scope set covers **every tool of the official Slack MCP server** (search,
+message read/send, conversation create, reactions, canvases, file
+read/download, emoji, user profiles — per the
+[official tool⇄scope table](https://docs.slack.dev/ai/slack-mcp-server/))
+plus `files:write` for the injected upload tools; the manifest's comments
+map each scope to the tools it unlocks so you can trim deliberately. A
+missing scope surfaces later as a `missing_scope` error on that upstream
+tool. Slack's MCP endpoint accepts internal (workspace-installed) apps —
+no directory listing needed.
 
 **Option A — new dedicated app (recommended for a clean start):**
 
@@ -28,6 +37,12 @@ CLI): open the app's settings and confirm/add:
   manifest — `files:write` is the one the upload tools require.
 - **OAuth & Permissions → Redirect URLs**: `https://localhost:7777/callback`
   (must match `oauth.callback_port` in your config).
+
+The scopes your config *requests* must be a subset of what the app
+*permits* — requesting a scope the app does not declare fails at the
+authorize step. Either add the missing scopes on the app side, or trim
+your config's `oauth.scopes` to what the app permits (losing the
+corresponding upstream tools).
 
 > Adding a scope to an already-authorized app requires a **re-consent**
 > (step 5) in every workspace, and re-consent may rotate the user token.

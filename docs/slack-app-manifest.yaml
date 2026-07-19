@@ -6,17 +6,35 @@
 # Notes:
 #   - User token scopes only: the tool acts as the authorizing user
 #     (matching the official Slack MCP connector's identity). No bot
-#     user, no bot scopes, no Socket Mode.
+#     user, no bot scopes, no Socket Mode. Slack's MCP endpoint accepts
+#     internal (workspace-installed) apps like this one.
+#   - The scope set covers EVERY tool of the official Slack MCP server
+#     (per https://docs.slack.dev/ai/slack-mcp-server/ — search, message
+#     read/send, conversation create, reactions, canvases, files, users)
+#     plus files:write for the injected upload tools. A missing scope
+#     surfaces later as a missing_scope error on the corresponding
+#     upstream tool — trim only what you knowingly do not want:
+#       search tools .............. search:read.* (granular) + search:read
+#       read channels/threads ..... channels:history groups:history
+#                                   im:history mpim:history
+#       list members / conv info .. channels:read groups:read im:read
+#                                   mpim:read
+#       send messages ............. chat:write
+#       create conversations ...... channels:write groups:write im:write
+#                                   mpim:write
+#       reactions ................. reactions:write
+#       canvases .................. canvases:read canvases:write
+#       read/download files ....... files:read
+#       emoji search .............. emoji:read
+#       user profiles ............. users:read users:read.email
+#       injected upload tools ..... files:write   (the only one THIS
+#                                   tool itself requires)
 #   - redirect_urls must match oauth.callback_port in your config
 #     (default 7777). Slack only accepts https:// here, which is why
 #     the login flow serves a self-signed TLS loopback callback.
 #   - token_rotation_enabled: false issues a non-expiring user token
 #     (no refresh dance); slack-mcp-extender supports rotation too, but
 #     non-rotating is the simplest correct setup for a local tool.
-#   - The scope set below mirrors what the official Slack MCP uses for
-#     reading/searching, plus files:write for the injected upload tools.
-#     Trim read scopes you do not need — files:write is the only one the
-#     upload tools themselves require.
 
 display_information:
   name: slack-mcp-extender
@@ -28,18 +46,34 @@ oauth_config:
     - https://localhost:7777/callback
   scopes:
     user:
+      - canvases:read
+      - canvases:write
       - channels:history
       - channels:read
+      - channels:write
       - chat:write
+      - emoji:read
+      - files:read
       - files:write
       - groups:history
       - groups:read
+      - groups:write
       - im:history
       - im:read
+      - im:write
       - mpim:history
       - mpim:read
+      - mpim:write
+      - reactions:write
       - search:read
+      - search:read.files
+      - search:read.im
+      - search:read.mpim
+      - search:read.private
+      - search:read.public
+      - search:read.users
       - users:read
+      - users:read.email
 
 settings:
   org_deploy_enabled: false

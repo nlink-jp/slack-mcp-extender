@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Default Slack App icon (`docs/slack-app-icon.png`, 1024×1024, SVG
+  source included): paperclip + upload arrow on the manifest's
+  background color.
 - `--config` accepts a bare workspace name (resolved in
   `~/.config/slack-mcp-extender`, `.json` appended automatically) in
   addition to a path.

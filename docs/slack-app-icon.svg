@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- slack-mcp-extender app icon: a paperclip (attachment) with an upload
+       arrow rising across it. The arrow carries a background-color keyline
+       so it reads as a layer above the clip. Background matches the
+       manifest's background_color (#2c2d30). -->
+  <rect width="1024" height="1024" fill="#2c2d30"/>
+
+  <!-- paperclip, slightly rotated for dynamism -->
+  <g transform="translate(-40 10) rotate(-18 460 512)" stroke="#8b7cf6"
+     stroke-width="52" stroke-linecap="round" stroke-linejoin="round"
+     fill="none">
+    <path d="M 360 350
+             L 360 680
+             a 110 110 0 0 0 220 0
+             L 580 320
+             a 75 75 0 0 0 -150 0
+             L 430 630
+             a 38 38 0 0 0 76 0
+             L 506 380"/>
+  </g>
+
+  <!-- upload arrow: keyline (background color) first, then the arrow -->
+  <g stroke="#2c2d30" stroke-width="112" stroke-linecap="round"
+     stroke-linejoin="round" fill="none">
+    <path d="M 668 740 L 668 366"/>
+    <path d="M 556 478 L 668 366 L 780 478"/>
+  </g>
+  <g stroke="#ffffff" stroke-width="58" stroke-linecap="round"
+     stroke-linejoin="round" fill="none">
+    <path d="M 668 740 L 668 366"/>
+    <path d="M 556 478 L 668 366 L 780 478"/>
+  </g>
+</svg>

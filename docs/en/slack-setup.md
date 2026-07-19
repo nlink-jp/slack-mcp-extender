@@ -54,6 +54,11 @@ corresponding upstream tools).
 > If another tool shares this app with its own token store, verify it
 > still works afterwards.
 
+**App icon (optional):** manifests cannot carry an icon, so upload
+[`docs/slack-app-icon.png`](../slack-app-icon.png) (1024×1024; SVG source
+sits next to it) under **Basic Information → Display Information** if you
+want the app to be recognizable in the workspace.
+
 ## 2. Collect the client credentials
 
 In the app's **Basic Information → App Credentials**, note the

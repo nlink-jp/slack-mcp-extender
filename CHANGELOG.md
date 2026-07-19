@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-20
+
+### Changed
+
+- **Breaking**: the injected tools moved into an explicit `ext_`
+  namespace — `upload_file` → `ext_file_upload`, `upload_file_to_thread`
+  → `ext_file_upload_to_thread` (ADR-0001). Extension tools can now
+  never collide with — or mask — official `slack_*` tools. No
+  compatibility aliases.
+
+### Added
+
+- `ext_file_download`: the symmetric counterpart of upload — save a
+  Slack file (`file_id`) to the local disk (ADR-0002). Write-side
+  containment mirrors the read side: destination parent must resolve
+  into `allowed_roots`, Slack-supplied filenames are sanitized to a bare
+  basename (name-only influence), hidden names rejected, existing
+  targets never overwritten, size cap enforced against the declared size
+  and on the wire, atomic writes, ingress audit entries.
+- Live E2E upload→download roundtrip test.
+
 ## [0.1.0] - 2026-07-20
 
 ### Added

@@ -146,7 +146,7 @@ settings:
 ```
 
 Restart Claude Desktop. The connector exposes every official Slack MCP
-tool unchanged, plus `upload_file` and `upload_file_to_thread`.
+tool unchanged, plus `ext_file_upload`, `ext_file_upload_to_thread`, and `ext_file_download`.
 
 ## Troubleshooting
 

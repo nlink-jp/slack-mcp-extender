@@ -5,8 +5,9 @@
 A per-workspace MCP proxy (CLI + stdio MCP server) that **transparently
 forwards Claude's official Slack MCP** (`mcp.slack.com/mcp`, SSE) while
 **injecting file-attachment upload tools** — the one capability the official
-connector lacks. Two injected tools (`upload_file` for root-message
-attachments, `upload_file_to_thread` for thread replies) run the Slack
+connector lacks. Three injected tools in the ext_ namespace (`ext_file_upload` for
+root-message attachments, `ext_file_upload_to_thread` for thread
+replies, `ext_file_download` for saving Slack files to disk) run the Slack
 external upload 3-step (`files.getUploadURLExternal` → POST → 
 `files.completeUploadExternal`) under the **same user token** the proxy holds
 (single OAuth session; app shared with scli; user scope `files:write`).

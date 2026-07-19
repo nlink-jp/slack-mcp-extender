@@ -7,20 +7,21 @@
 > for the design.
 
 A per-workspace MCP proxy that **transparently forwards Claude's official
-Slack MCP** (`mcp.slack.com/mcp`) while **injecting the one capability it
-lacks: posting file attachments**.
+Slack MCP** (`mcp.slack.com/mcp`) while **injecting the capability it
+lacks: moving real files between Slack and the local disk**.
 
 On the Claude side it looks like a single Slack connector — every official
-tool passes through unmodified — plus two injected tools:
+tool passes through unmodified — plus three injected tools in an explicit
+`ext_` namespace (they can never collide with official `slack_*` tools):
 
-| Tool | Posts the file as |
+| Tool | Does |
 |---|---|
-| `upload_file` | a root message attachment in a channel |
-| `upload_file_to_thread` | a thread-reply attachment (`thread_ts`) |
+| `ext_file_upload` | post a local file as a root-message attachment |
+| `ext_file_upload_to_thread` | post a local file as a thread-reply attachment (`thread_ts`) |
+| `ext_file_download` | save a Slack file (`file_id`) to the local disk — never overwrites |
 
-Uploads use the Slack external upload 3-step under the **same user token**
-the proxy already holds — one OAuth session, one identity, no second
-credential.
+Transfers run under the **same user token** the proxy already holds — one
+OAuth session, one identity, no second credential.
 
 ## Why user identity (a deliberate deviation)
 
@@ -32,13 +33,18 @@ use [swrite](https://github.com/nlink-jp/swrite).
 
 ## Security model
 
-This tool relays untrusted Slack content, reads local files, and sends data
-out — an exfiltration primitive if left unconstrained. File access is
-therefore confined to operator-configured **`allowed_roots`**:
+This tool relays untrusted Slack content, reads and writes local files, and
+moves data in both directions — an exfiltration primitive on the way out
+and a write primitive on the way in, if left unconstrained. File access in
+**both directions** is therefore confined to operator-configured
+**`allowed_roots`**:
 
 - canonicalized containment (Abs + Clean + EvalSymlinks), deny-by-default
 - hidden path components (`.git`, `.env`, `.ssh`, …) rejected below the roots
-- regular files only, size-capped, structured `path_denied` errors, audit log
+- regular files only, size-capped (declared size **and** on the wire),
+  structured `path_denied` errors, egress/ingress audit log
+- downloads never overwrite, and a Slack-side filename can influence only
+  the (sanitized) name of the saved file, never where it lands
 - containment is defined **only** in the operator's config — never from tool
   arguments or Slack-derived values
 

@@ -6,20 +6,21 @@
 > [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
 
 Claude の**純正 Slack MCP**（`mcp.slack.com/mcp`）を**完全透過でプロキシ**しつつ、
-純正に欠けている唯一の機能 — **ファイル添付投稿** — を注入する、ワークスペース
-単位の MCP プロキシです。
+純正に欠けている機能 — **Slack とローカルディスク間の実ファイル移動** — を
+注入する、ワークスペース単位の MCP プロキシです。
 
 Claude 側からは 1 つの Slack コネクタに見え、純正の全ツールは無改変で素通し。
-そこに注入ツールが 2 本加わります:
+そこに `ext_` 名前空間の注入ツールが 3 本加わります（公式 `slack_*` ツールと
+構造的に衝突しません）:
 
-| ツール | 投稿形態 |
+| ツール | 動作 |
 |---|---|
-| `upload_file` | チャンネルのルートメッセージとして添付投稿 |
-| `upload_file_to_thread` | スレッド返信として添付投稿（`thread_ts`） |
+| `ext_file_upload` | ローカルファイルをルートメッセージとして添付投稿 |
+| `ext_file_upload_to_thread` | ローカルファイルをスレッド返信として添付投稿（`thread_ts`） |
+| `ext_file_download` | Slack ファイル（`file_id`）をローカルに保存 — 上書きは絶対にしない |
 
-アップロードは Slack external upload 3-step を、プロキシが既に保持している
-**同一の user token** で実行します — OAuth セッション 1 つ、identity 1 つ、
-第 2 の credential は不要です。
+転送はプロキシが既に保持している**同一の user token** で実行します —
+OAuth セッション 1 つ、identity 1 つ、第 2 の credential は不要です。
 
 ## なぜ本人名義か（意図的な差異）
 
@@ -31,13 +32,17 @@ chatops-series の他ツール（swrite, stail, slack-router）は bot 認証で
 
 ## セキュリティモデル
 
-本ツールは、非信頼な Slack コンテンツを中継し、ローカルファイルを読み、外部へ
-送信します — 制約がなければデータ持ち出し（exfiltration）プリミティブです。
-そのためファイルアクセスは operator が設定する **`allowed_roots`** に封じ込めます:
+本ツールは、非信頼な Slack コンテンツを中継し、ローカルファイルを読み書きし、
+データを双方向に移動します — 制約がなければ、出る方向は exfiltration、入る
+方向は書き込みプリミティブです。そのため**双方向とも**ファイルアクセスを
+operator が設定する **`allowed_roots`** に封じ込めます:
 
 - canonical 化（Abs + Clean + EvalSymlinks）+ 包含チェック、deny-by-default
 - roots 配下でも隠しパス成分（`.git`, `.env`, `.ssh` 等）は拒否
-- 通常ファイルのみ・サイズ上限・構造化 `path_denied` エラー・監査ログ
+- 通常ファイルのみ・サイズ上限（申告サイズ**と**転送中の実測の両方）・構造化
+  `path_denied` エラー・egress/ingress 監査ログ
+- download は上書き不可、Slack 側ファイル名が影響できるのは（サニタイズ後の）
+  保存名のみで、置き場所には決して影響しない
 - 封じ込めの規定は **operator の config のみ** — ツール引数や Slack 由来の値
   からは決して導出しない
 

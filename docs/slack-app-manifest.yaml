@@ -35,6 +35,9 @@
 #   - token_rotation_enabled: false issues a non-expiring user token
 #     (no refresh dance); slack-mcp-extender supports rotation too, but
 #     non-rotating is the simplest correct setup for a local tool.
+#   - is_mcp_enabled: true is what authorizes this app's tokens against
+#     Slack's MCP endpoint (mcp.slack.com) — without it the upstream
+#     rejects the connection.
 
 display_information:
   name: slack-mcp-extender
@@ -79,3 +82,4 @@ settings:
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
+  is_mcp_enabled: true

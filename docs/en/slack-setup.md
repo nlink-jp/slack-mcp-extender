@@ -37,6 +37,11 @@ CLI): open the app's settings and confirm/add:
   manifest — `files:write` is the one the upload tools require.
 - **OAuth & Permissions → Redirect URLs**: `https://localhost:7777/callback`
   (must match `oauth.callback_port` in your config).
+- **MCP enablement**: the app must have MCP enabled
+  (`settings.is_mcp_enabled: true` in manifest terms — check the app's
+  settings/manifest). Without it, Slack's MCP endpoint rejects the
+  connection. If the app already works with another MCP proxy against
+  `mcp.slack.com`, this is already on.
 
 The scopes your config *requests* must be a subset of what the app
 *permits* — requesting a scope the app does not declare fails at the

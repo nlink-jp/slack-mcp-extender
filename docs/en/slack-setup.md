@@ -144,4 +144,5 @@ tool unchanged, plus `upload_file` and `upload_file_to_thread`.
 | Tool error `path_denied` | The file resolves outside `allowed_roots` (or is hidden / too large / not a regular file). The error's `details` say which rule and which roots. |
 | Tool error `slack_api_error: not_in_channel` | The authorizing user is not a member of the target channel — join it in Slack first. |
 | Browser warning on the callback | Expected (self-signed loopback TLS) — click through. |
+| A freshly created channel is not found by the search tools | Slack's search index lags new channels. Ask the agent to use a channel ID directly, or wait for indexing. |
 | `start callback server on port 7777` | Port busy — change `oauth.callback_port` and the app's Redirect URL together. |

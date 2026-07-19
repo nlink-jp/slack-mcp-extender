@@ -1,9 +1,10 @@
 # slack-mcp-extender
 
 > **Status: リリース前。** Phase 1 コア（透過 proxy・OAuth login・注入 upload
-> ツール・パス封じ込め）は実装・単体テスト済みですが、実ワークスペースでの
-> E2E 検証とリリースは未了です。`init` は未実装のため、当面 config は手書きして
-> ください。設計は [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
+> ツール・パス封じ込め）は実装・単体テスト済みで、**実ワークスペースでの E2E
+> 検証も完了**しています（実 proxy の透過動作・root/thread 添付投稿・封じ込め
+> 拒否と監査記録）。リリースは未了。`init` は未実装のため、当面 config は
+> 手書きしてください。設計は [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
 
 Claude の**純正 Slack MCP**（`mcp.slack.com/mcp`）を**完全透過でプロキシ**しつつ、
 純正に欠けている唯一の機能 — **ファイル添付投稿** — を注入する、ワークスペース

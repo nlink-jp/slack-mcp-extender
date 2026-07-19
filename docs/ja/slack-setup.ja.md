@@ -137,4 +137,5 @@ Claude Desktop を再起動すると、純正 Slack MCP の全ツールがその
 | ツールエラー `path_denied` | ファイルが `allowed_roots` の外に解決される（または隠し・サイズ超過・通常ファイル以外）。`details` にどのルールとどの roots かが入っている |
 | ツールエラー `slack_api_error: not_in_channel` | 認可ユーザーが対象チャンネルに未参加 — 先に Slack 側で参加する |
 | callback でブラウザ警告 | 想定内（自己署名 loopback TLS）— そのまま進む |
+| 作成直後のチャンネルが検索ツールで見つからない | Slack の検索インデックスは新規チャンネルの反映が遅れる。チャンネル ID を直接指定するか、反映を待つ |
 | `start callback server on port 7777` | ポート使用中 — `oauth.callback_port` と App の Redirect URL をセットで変更 |

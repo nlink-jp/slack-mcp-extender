@@ -67,7 +67,7 @@ func Login(cfg *config.Config, opts Options) error {
 	}
 	port := tcpListener.Addr().(*net.TCPAddr).Port
 
-	var listener net.Listener = tcpListener
+	listener := net.Listener(tcpListener)
 	host := "127.0.0.1"
 	if oauthCfg.CallbackScheme == "https" {
 		cert, certErr := generateLoopbackCert()

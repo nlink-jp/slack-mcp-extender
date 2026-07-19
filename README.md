@@ -1,8 +1,10 @@
 # slack-mcp-extender
 
-> **Status: pre-release scaffold.** The design is settled — see the
-> [RFP](docs/en/slack-mcp-extender-rfp.md) — but the proxy, OAuth, and upload
-> implementation is still in development. Nothing below is usable yet.
+> **Status: pre-release.** The Phase 1 core (transparent proxy, OAuth login,
+> injected upload tools, path containment) is implemented and unit-tested,
+> but not yet end-to-end verified against a real workspace or released.
+> `init` is not implemented yet — write the workspace config by hand for
+> now. See the [RFP](docs/en/slack-mcp-extender-rfp.md) for the design.
 
 A per-workspace MCP proxy that **transparently forwards Claude's official
 Slack MCP** (`mcp.slack.com/mcp`) while **injecting the one capability it

@@ -22,16 +22,15 @@ func Run(args []string, version string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	cmd, rest := args[0], args[1:]
-	_ = rest
 	switch cmd {
 	case "mcp":
-		return notImplemented(stderr, "mcp")
+		return runMCP(rest, stdout, stderr)
 	case "init":
 		return notImplemented(stderr, "init")
 	case "login":
-		return notImplemented(stderr, "login")
+		return runLogin(rest, stdout, stderr)
 	case "config":
-		return notImplemented(stderr, "config")
+		return runConfig(rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, "slack-mcp-extender "+version)
 		fmt.Fprintln(stdout, "Transparent proxy for the official Slack MCP (mcp.slack.com/mcp) with injected file-attachment upload tools.")
@@ -46,9 +45,9 @@ func Run(args []string, version string, stdout, stderr io.Writer) int {
 	}
 }
 
-// notImplemented reports a scaffold-stage stub subcommand.
+// notImplemented reports a not-yet-implemented subcommand (init is Phase 2).
 func notImplemented(w io.Writer, cmd string) int {
-	fmt.Fprintf(w, "slack-mcp-extender %s: not implemented yet (scaffold stage)\n", cmd)
+	fmt.Fprintf(w, "slack-mcp-extender %s: not implemented yet\n", cmd)
 	return exitError
 }
 

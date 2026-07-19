@@ -16,8 +16,10 @@ size cap) because the tool is otherwise an exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
 full new build with no governance machinery. Zero external dependencies.
 
-**Status: scaffold.** CLI dispatch and stubs only; proxy/OAuth/upload are
-Phase 1 development (see the RFP under `docs/`).
+**Status: Phase 1 core implemented** (proxy, OAuth login, injected tools,
+containment; ~90% coverage per package). Not yet E2E-verified against a
+real workspace or released. `init` (interactive config scaffolding) is
+Phase 2 (see the RFP under `docs/`).
 
 ## Build & test
 
@@ -34,17 +36,23 @@ Module path: `github.com/nlink-jp/slack-mcp-extender`.
 ## Structure
 
 ```
-main.go              package main; version via -ldflags; calls app.Run
-internal/app/        CLI dispatch (mcp / init / login / config / version)
-scripts/             org codesign/notarize/brew templates (copied verbatim)
-docs/{en,ja}/        RFP and future docs (ja = primary, *.ja.md suffix)
+main.go                  package main; version via -ldflags; calls app.Run
+internal/app/            CLI dispatch + command wiring (buildProxy)
+internal/jsonrpc/        JSON-RPC types + raw-preserving tools/list merge
+internal/containment/    path policy (5-stage canonical checks) — the
+                         highest-priority test suite in the repo
+internal/config/         per-workspace JSON config (strict decode, 0600)
+internal/transport/      Streamable HTTP/SSE client + token store/refresh
+internal/oauth/          authorization_code login (PKCE, HTTPS loopback)
+internal/upload/         Slack external upload 3-step + egress audit log
+internal/proxy/          transparent pipe + merge + routing + injected tools
+scripts/                 org codesign/notarize/brew templates (verbatim)
+docs/{en,ja}/            RFP and future docs (ja = primary, *.ja.md suffix)
 ```
 
-Planned Phase 1 packages: `internal/jsonrpc` (framing), `internal/transport`
-(SSE upstream + OAuth authcode/token store), `internal/proxy` (pipe +
-tools/list merge + tools/call routing), `internal/upload` (external upload
-3-step), `internal/containment` (path policy), `internal/config`
-(per-workspace config).
+Key transparency detail: upstream tools/list entries are merged as raw
+JSON (never decoded into structs), so upstream-only fields (title,
+annotations, outputSchema, nextCursor) survive byte-for-byte.
 
 ## Gotchas
 

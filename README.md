@@ -1,11 +1,10 @@
 # slack-mcp-extender
 
-> **Status: pre-release.** The Phase 1 core (transparent proxy, OAuth login,
-> injected upload tools, path containment) is implemented, unit-tested, and
-> **end-to-end verified against a real workspace** (live proxy transparency,
-> root and thread attachments, containment denials with audit records).
-> Not yet released. See the [RFP](docs/en/slack-mcp-extender-rfp.md) for
-> the design.
+> Implemented, unit-tested, and **end-to-end verified against a real
+> workspace** (live proxy transparency, root and thread attachments,
+> containment denials with audit records). macOS binaries are Developer ID
+> signed and notarized. See the [RFP](docs/en/slack-mcp-extender-rfp.md)
+> for the design.
 
 A per-workspace MCP proxy that **transparently forwards Claude's official
 Slack MCP** (`mcp.slack.com/mcp`) while **injecting the one capability it
@@ -45,13 +44,15 @@ therefore confined to operator-configured **`allowed_roots`**:
 
 ## Installation
 
+Download the latest binary for your platform from
+[Releases](https://github.com/nlink-jp/slack-mcp-extender/releases)
+(macOS builds are Developer ID signed and notarized), or build from
+source:
+
 ```bash
 make build   # outputs dist/slack-mcp-extender (never `go build` directly)
 make test    # go test -race -cover ./...
 ```
-
-Pre-built, signed and notarized binaries will be published on the Releases
-page once v0.1.0 ships.
 
 ## Setup
 

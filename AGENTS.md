@@ -16,10 +16,10 @@ size cap) because the tool is otherwise an exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
 full new build with no governance machinery. Zero external dependencies.
 
-**Status: core + init implemented, live-E2E verified** (proxy, OAuth
-login, injected tools, containment, interactive `init`; ~90% coverage per
-package; real-workspace E2E passed 2026-07-20 and is codified in `e2e/`).
-Not yet released (see the RFP under `docs/`).
+**Status: released** (v0.1.0). Proxy, OAuth login, injected tools,
+containment, interactive `init`; ~90% coverage per package;
+real-workspace E2E codified in `e2e/`. Design record: the RFP under
+`docs/`.
 
 ## Build & test
 

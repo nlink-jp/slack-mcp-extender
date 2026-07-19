@@ -1,9 +1,8 @@
 # slack-mcp-extender
 
-> **Status: リリース前。** Phase 1 コア（透過 proxy・OAuth login・注入 upload
-> ツール・パス封じ込め）は実装・単体テスト済みで、**実ワークスペースでの E2E
-> 検証も完了**しています（実 proxy の透過動作・root/thread 添付投稿・封じ込め
-> 拒否と監査記録）。リリースは未了。設計は
+> 実装・単体テスト済みで、**実ワークスペースでの E2E 検証も完了**しています
+> （実 proxy の透過動作・root/thread 添付投稿・封じ込め拒否と監査記録）。
+> macOS バイナリは Developer ID 署名 + notarize 済み。設計は
 > [RFP](docs/ja/slack-mcp-extender-rfp.ja.md) 参照。
 
 Claude の**純正 Slack MCP**（`mcp.slack.com/mcp`）を**完全透過でプロキシ**しつつ、
@@ -44,13 +43,14 @@ chatops-series の他ツール（swrite, stail, slack-router）は bot 認証で
 
 ## インストール
 
+[Releases](https://github.com/nlink-jp/slack-mcp-extender/releases) から
+各プラットフォームの最新バイナリをダウンロード（macOS ビルドは Developer ID
+署名 + notarize 済み）、またはソースからビルド:
+
 ```bash
 make build   # dist/slack-mcp-extender に出力（`go build` 直叩き禁止）
 make test    # go test -race -cover ./...
 ```
-
-署名・notarize 済みのビルド済みバイナリは v0.1.0 リリース時に Releases ページで
-公開予定です。
 
 ## セットアップ
 

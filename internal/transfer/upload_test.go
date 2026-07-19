@@ -30,13 +30,13 @@ type fakeSlack struct {
 	completeResponse string
 	uploadStatus     int
 
-	uploadedBytes  atomic.Pointer[[]byte]
-	completeBody   atomic.Pointer[[]byte]
-	getURLQuery    atomic.Pointer[string]
-	authHeaders    []string
-	getURLCalls    atomic.Int32
-	completeCalls  atomic.Int32
-	uploadCalls    atomic.Int32
+	uploadedBytes atomic.Pointer[[]byte]
+	completeBody  atomic.Pointer[[]byte]
+	getURLQuery   atomic.Pointer[string]
+	authHeaders   []string
+	getURLCalls   atomic.Int32
+	completeCalls atomic.Int32
+	uploadCalls   atomic.Int32
 }
 
 func newFakeSlack(t *testing.T) *fakeSlack {

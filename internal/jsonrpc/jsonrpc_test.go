@@ -8,10 +8,10 @@ import (
 
 func TestMessageClassification(t *testing.T) {
 	tests := []struct {
-		name                                 string
-		raw                                  string
+		name                                  string
+		raw                                   string
 		isRequest, isNotification, isResponse bool
-		idString                             string
+		idString                              string
 	}{
 		{"request numeric id", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, true, false, false, "1"},
 		{"request string id", `{"jsonrpc":"2.0","id":"a-1","method":"ping"}`, true, false, false, `"a-1"`},

@@ -14,11 +14,11 @@ import (
 
 func TestRunDispatch(t *testing.T) {
 	tests := []struct {
-		name                                 string
-		args                                 []string
-		wantExit                             int
-		wantStdout                           string // substring expected on stdout ("" = none checked)
-		wantStderr                           string // substring expected on stderr ("" = none checked)
+		name       string
+		args       []string
+		wantExit   int
+		wantStdout string // substring expected on stdout ("" = none checked)
+		wantStderr string // substring expected on stderr ("" = none checked)
 	}{
 		{"no args shows usage on stderr", nil, exitError, "", "Usage:"},
 		{"version", []string{"version"}, exitOK, "slack-mcp-extender v1.2.3", ""},

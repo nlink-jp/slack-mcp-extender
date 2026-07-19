@@ -27,14 +27,14 @@ func TestInitHappyPathEnvSecret(t *testing.T) {
 	cfgPath := filepath.Join(dir, "ws.json")
 
 	exit, stdout, stderr := runInitScripted(t, []string{
-		"testws",              // workspace name
-		cfgPath,               // config path
-		"EXAMPLE_CLIENT_ID",   // client id
-		"1",                   // secret storage: env var
-		"MY_SECRET_ENV",       // env var name
-		"7788",                // callback port
-		root,                  // allowed root 1
-		"",                    // finish roots
+		"testws",            // workspace name
+		cfgPath,             // config path
+		"EXAMPLE_CLIENT_ID", // client id
+		"1",                 // secret storage: env var
+		"MY_SECRET_ENV",     // env var name
+		"7788",              // callback port
+		root,                // allowed root 1
+		"",                  // finish roots
 	})
 	if exit != exitOK {
 		t.Fatalf("exit = %d (stderr: %s)", exit, stderr)
@@ -85,10 +85,10 @@ func TestInitLiteralSecretWarns(t *testing.T) {
 	cfgPath := filepath.Join(dir, "lit.json")
 	exit, stdout, _ := runInitScripted(t, []string{
 		"litws", cfgPath, "CID",
-		"2",              // literal secret
-		"LITERAL_VALUE",  // the secret
-		"",               // port default
-		"",               // no roots
+		"2",             // literal secret
+		"LITERAL_VALUE", // the secret
+		"",              // port default
+		"",              // no roots
 	})
 	if exit != exitOK {
 		t.Fatalf("exit = %d", exit)
@@ -132,14 +132,14 @@ func TestInitRootHandling(t *testing.T) {
 
 	exit, _, _ := runInitScripted(t, []string{
 		"rootws", cfgPath, "CID", "1", "ENV_NAME", "",
-		"relative/nope",                  // skipped: not absolute
-		file,                             // skipped: not a directory
-		filepath.Join(dir, "missing"),    // does not exist...
-		"N",                              // ...decline keeping it
-		filepath.Join(dir, "later"),      // does not exist...
-		"y",                              // ...keep anyway
-		existing,                         // exists
-		"",                               // finish
+		"relative/nope",               // skipped: not absolute
+		file,                          // skipped: not a directory
+		filepath.Join(dir, "missing"), // does not exist...
+		"N",                           // ...decline keeping it
+		filepath.Join(dir, "later"),   // does not exist...
+		"y",                           // ...keep anyway
+		existing,                      // exists
+		"",                            // finish
 	})
 	if exit != exitOK {
 		t.Fatalf("exit = %d", exit)

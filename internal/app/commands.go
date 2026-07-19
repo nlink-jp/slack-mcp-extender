@@ -12,8 +12,8 @@ import (
 	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/oauth"
 	"github.com/nlink-jp/slack-mcp-extender/internal/proxy"
-	"github.com/nlink-jp/slack-mcp-extender/internal/transport"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
+	"github.com/nlink-jp/slack-mcp-extender/internal/transport"
 )
 
 // parseConfigFlag parses a --config flag from args.

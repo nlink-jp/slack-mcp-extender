@@ -71,12 +71,19 @@ func (m *mockUpstream) sentLines() []string {
 	return out
 }
 
-// stubUploader records the upload request and returns a canned result.
+// stubUploader records transfer calls and returns canned results.
 type stubUploader struct {
 	mu  sync.Mutex
 	req *transfer.UploadRequest
 	res *transfer.UploadResult
 	err error
+
+	// download stubs
+	info       *transfer.FileInfo
+	infoErr    error
+	fetchBytes []byte
+	fetchErr   error
+	fetchedTo  string
 }
 
 func (s *stubUploader) Upload(r transfer.UploadRequest) (*transfer.UploadResult, error) {
@@ -90,6 +97,29 @@ func (s *stubUploader) Upload(r transfer.UploadRequest) (*transfer.UploadResult,
 	res.ChannelID = r.ChannelID
 	res.ThreadTS = r.ThreadTS
 	return &res, nil
+}
+
+func (s *stubUploader) Info(fileID string) (*transfer.FileInfo, error) {
+	if s.infoErr != nil {
+		return nil, s.infoErr
+	}
+	if s.info != nil {
+		return s.info, nil
+	}
+	return &transfer.FileInfo{ID: fileID, Name: "stub.bin", Size: int64(len(s.fetchBytes)), DownloadURL: "stub://dl"}, nil
+}
+
+func (s *stubUploader) FetchTo(info *transfer.FileInfo, target string, maxSize int64) (int64, error) {
+	if s.fetchErr != nil {
+		return 0, s.fetchErr
+	}
+	s.mu.Lock()
+	s.fetchedTo = target
+	s.mu.Unlock()
+	if err := os.WriteFile(target, s.fetchBytes, 0o644); err != nil {
+		return 0, err
+	}
+	return int64(len(s.fetchBytes)), nil
 }
 
 // harness is the dummy MCP client: it writes agent lines into the proxy
@@ -156,7 +186,7 @@ func (h *harness) expect() string {
 	}
 }
 
-func testInjected(t *testing.T, uploader FileUploader) (*InjectedTools, string) {
+func testInjected(t *testing.T, uploader FileTransfer) (*InjectedTools, string) {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -270,8 +300,8 @@ func TestToolsListMergeInjectsAndPreserves(t *testing.T) {
 	if resp.Result.NextCursor != "c1" {
 		t.Error("nextCursor lost")
 	}
-	if len(resp.Result.Tools) != 3 {
-		t.Fatalf("tools = %d, want 3 (1 upstream + 2 injected)", len(resp.Result.Tools))
+	if len(resp.Result.Tools) != 4 {
+		t.Fatalf("tools = %d, want 4 (1 upstream + 3 injected)", len(resp.Result.Tools))
 	}
 	if _, ok := resp.Result.Tools[0]["annotations"]; !ok {
 		t.Error("upstream tool annotations lost")
@@ -282,7 +312,7 @@ func TestToolsListMergeInjectsAndPreserves(t *testing.T) {
 		_ = json.Unmarshal(tool["name"], &n)
 		names[n] = true
 	}
-	if !names[ToolUploadFile] || !names[ToolUploadFileToThread] {
+	if !names[ToolFileUpload] || !names[ToolFileUploadToThread] {
 		t.Errorf("injected tools missing: %v", names)
 	}
 }
@@ -330,7 +360,7 @@ func TestToolsCallInjectedHandledLocally(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"upload_file","arguments":{"channel_id":"C1","file":%q,"comment":"here"}}}`, file))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","file":%q,"comment":"here"}}}`, file))
 	got := h.expect()
 
 	if len(h.up.sentLines()) != 0 {
@@ -359,7 +389,7 @@ func TestToolsCallInjectedThread(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"upload_file_to_thread","arguments":{"channel_id":"C1","file":%q,"thread_ts":"171.001"}}}`, file))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ext_file_upload_to_thread","arguments":{"channel_id":"C1","file":%q,"thread_ts":"171.001"}}}`, file))
 	got := h.expect()
 	if !strings.Contains(got, `\"ok\":true`) {
 		t.Errorf("agent got %q", got)
@@ -381,7 +411,7 @@ func TestToolsCallInjectedPathDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"upload_file","arguments":{"channel_id":"C1","file":%q}}}`, outside))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","file":%q}}}`, outside))
 	got := h.expect()
 
 	if len(h.up.sentLines()) != 0 {

@@ -215,7 +215,7 @@ func TestLiveTransparency(t *testing.T) {
 	result, _ := resp["result"].(map[string]any)
 	tools, _ := result["tools"].([]any)
 	if len(tools) < 3 {
-		t.Fatalf("tools = %d, want upstream set + 2 injected", len(tools))
+		t.Fatalf("tools = %d, want upstream set + 3 injected", len(tools))
 	}
 
 	injected := 0
@@ -223,7 +223,7 @@ func TestLiveTransparency(t *testing.T) {
 	for _, raw := range tools {
 		tool, _ := raw.(map[string]any)
 		name, _ := tool["name"].(string)
-		if name == "upload_file" || name == "upload_file_to_thread" {
+		if name == "ext_file_upload" || name == "ext_file_upload_to_thread" || name == "ext_file_download" {
 			injected++
 			continue
 		}
@@ -235,8 +235,8 @@ func TestLiveTransparency(t *testing.T) {
 			}
 		}
 	}
-	if injected != 2 {
-		t.Errorf("injected tools = %d, want 2", injected)
+	if injected != 3 {
+		t.Errorf("injected tools = %d, want 3", injected)
 	}
 	if len(extraFields) == 0 {
 		t.Error("no upstream-only tool fields survived the merge — transparency regression")
@@ -272,11 +272,11 @@ func TestLiveContainmentDenials(t *testing.T) {
 		wantCode   string
 		wantReason string
 	}{
-		{"outside roots", "upload_file", map[string]any{"channel_id": "C000TEST", "file": outside}, "path_denied", "outside_allowed_roots"},
-		{"traversal", "upload_file", map[string]any{"channel_id": "C000TEST", "file": filepath.Join(root, "..", filepath.Base(t.TempDir()))}, "path_denied", ""},
-		{"hidden below root", "upload_file", map[string]any{"channel_id": "C000TEST", "file": hidden}, "path_denied", "hidden_component"},
-		{"missing file", "upload_file", map[string]any{"channel_id": "C000TEST", "file": filepath.Join(root, "no-such-file-e2e.bin")}, "path_denied", "not_found"},
-		{"thread without ts", "upload_file_to_thread", map[string]any{"channel_id": "C000TEST", "file": hidden}, "invalid_arguments", ""},
+		{"outside roots", "ext_file_upload", map[string]any{"channel_id": "C000TEST", "file": outside}, "path_denied", "outside_allowed_roots"},
+		{"traversal", "ext_file_upload", map[string]any{"channel_id": "C000TEST", "file": filepath.Join(root, "..", filepath.Base(t.TempDir()))}, "path_denied", ""},
+		{"hidden below root", "ext_file_upload", map[string]any{"channel_id": "C000TEST", "file": hidden}, "path_denied", "hidden_component"},
+		{"missing file", "ext_file_upload", map[string]any{"channel_id": "C000TEST", "file": filepath.Join(root, "no-such-file-e2e.bin")}, "path_denied", "not_found"},
+		{"thread without ts", "ext_file_upload_to_thread", map[string]any{"channel_id": "C000TEST", "file": hidden}, "invalid_arguments", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.label, func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestLiveUploadRootAndThread(t *testing.T) {
 	p := startMCP(t)
 
 	// Root attachment via the injected tool.
-	text, isError := p.callTool("upload_file", map[string]any{
+	text, isError := p.callTool("ext_file_upload", map[string]any{
 		"channel_id": channel,
 		"file":       testFile,
 		"comment":    "slack-mcp-extender Go E2E: root attachment",
@@ -349,7 +349,7 @@ func TestLiveUploadRootAndThread(t *testing.T) {
 		}
 	}
 
-	text, isError = p.callTool("upload_file_to_thread", map[string]any{
+	text, isError = p.callTool("ext_file_upload_to_thread", map[string]any{
 		"channel_id": channel,
 		"file":       testFile,
 		"filename":   "e2e-thread-reply.txt",
@@ -377,4 +377,70 @@ func TestLiveUploadRootAndThread(t *testing.T) {
 		t.Errorf("root upload audit entries = %d, want 1", got)
 	}
 	t.Logf("root file=%s thread_ts=%s — verify visually in the channel", rootRes.FileID, threadTS)
+}
+
+// TestLiveDownloadRoundtrip uploads a file and downloads it back through
+// ext_file_download, verifying byte-for-byte parity. Gated on
+// SLACK_MCP_EXTENDER_E2E_CHANNEL like the posting test.
+func TestLiveDownloadRoundtrip(t *testing.T) {
+	channel := os.Getenv("SLACK_MCP_EXTENDER_E2E_CHANNEL")
+	if channel == "" {
+		t.Skip("SLACK_MCP_EXTENDER_E2E_CHANNEL not set — skipping roundtrip test")
+	}
+	cfgPath := configPath(t)
+	root := allowedRoot(t, cfgPath)
+
+	content := fmt.Sprintf("roundtrip payload %d\n", os.Getpid())
+	source := filepath.Join(root, "smx-roundtrip-src.txt")
+	if err := os.WriteFile(source, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(source) })
+
+	p := startMCP(t)
+
+	// Up: post the file.
+	text, isError := p.callTool("ext_file_upload", map[string]any{
+		"channel_id": channel,
+		"file":       source,
+		"comment":    "slack-mcp-extender Go E2E: download roundtrip source",
+	})
+	if isError {
+		t.Fatalf("ext_file_upload: %s", text)
+	}
+	var up struct {
+		FileID string `json:"file_id"`
+	}
+	if err := json.Unmarshal([]byte(text), &up); err != nil || up.FileID == "" {
+		t.Fatalf("upload result = %s", text)
+	}
+
+	// Down: fetch it back under a different name.
+	time.Sleep(2 * time.Second)
+	text, isError = p.callTool("ext_file_download", map[string]any{
+		"file_id":  up.FileID,
+		"dest_dir": root,
+		"filename": "smx-roundtrip-back.txt",
+	})
+	if isError {
+		t.Fatalf("ext_file_download: %s", text)
+	}
+	var down struct {
+		OK   bool   `json:"ok"`
+		Path string `json:"path"`
+		Size int64  `json:"size"`
+	}
+	if err := json.Unmarshal([]byte(text), &down); err != nil || !down.OK {
+		t.Fatalf("download result = %s", text)
+	}
+	t.Cleanup(func() { os.Remove(down.Path) })
+
+	got, err := os.ReadFile(down.Path)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if string(got) != content {
+		t.Errorf("roundtrip mismatch: %q vs %q", got, content)
+	}
+	t.Logf("roundtrip OK: %s -> %s -> %s (%d bytes)", source, up.FileID, down.Path, down.Size)
 }

@@ -99,3 +99,8 @@ help:
 BREW_KIND := formula
 BREW_DESC := Transparent proxy for the official Slack MCP with file-attachment upload tools
 include scripts/release-brew.mk
+
+## test-linux: run the test suite inside a Linux container (podman/docker)
+.PHONY: test-linux
+test-linux:
+	@scripts/test-linux.sh

@@ -27,6 +27,7 @@ real-workspace E2E codified in `e2e/`. Design record: the RFP under
 ```bash
 make build      # → dist/slack-mcp-extender  (NEVER `go build` directly)
 make test       # go test -race -cover ./...  (offline; mocked upstream)
+make test-linux # same suite on Linux (container)
 make check      # lint + test + build-all
 make build-all  # cross-compile linux/{amd64,arm64}, darwin/arm64, windows/amd64
 make e2e        # LIVE tests vs the real Slack MCP (see below)

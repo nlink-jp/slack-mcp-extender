@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // MetaKey is the request-level `_meta` key a runtime sets on every tools/call
@@ -49,12 +48,21 @@ func newErr(code, format string, args ...any) *Error {
 	return &Error{Code: code, Message: fmt.Sprintf(format, args...)}
 }
 
-// Access mode bits for syscall.Access: write to add an entry, execute to
-// traverse the directory.
-const (
-	wOK = 0x02
-	xOK = 0x01
-)
+// writable reports whether this process can create an entry in dir.
+//
+// The test is a create-and-remove rather than an access(2) call: syscall.Access
+// does not exist on Windows, and these servers cross-compile there. Doing what
+// the server is about to do anyway is also the more honest check — an access
+// bit can say yes on a filesystem that then refuses the write.
+func writable(dir string) error {
+	f, err := os.CreateTemp(dir, ".work_dir-check-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	_ = f.Close()
+	return os.Remove(name)
+}
 
 // deniedTrees are locations a work directory may never be, together with
 // everything under them. Paths are in resolved form (/etc and /var are
@@ -125,7 +133,7 @@ func Validate(dir string) (string, error) {
 	if why := denied(dir, resolved); why != "" {
 		return "", newErr(CodeDenied, "work_dir %q is refused: %s", dir, why)
 	}
-	if err := syscall.Access(resolved, wOK|xOK); err != nil {
+	if err := writable(resolved); err != nil {
 		return "", newErr(CodeNotWritable, "work_dir %q is not writable by this server", dir)
 	}
 	return resolved, nil

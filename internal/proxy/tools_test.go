@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
@@ -17,7 +16,7 @@ import (
 
 func handleArgs(t *testing.T, it *InjectedTools, tool string, args map[string]any) (isError bool, payload map[string]any) {
 	t.Helper()
-	result := it.Handle(tool, args)
+	result := it.Handle(tool, args, nil)
 	if len(result.Content) != 1 || result.Content[0].Type != "text" {
 		t.Fatalf("content = %+v", result.Content)
 	}
@@ -28,29 +27,29 @@ func handleArgs(t *testing.T, it *InjectedTools, tool string, args map[string]an
 }
 
 func TestHandleMissingRequiredArgs(t *testing.T) {
-	it, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
+	it, root := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 
 	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{"file": "/x"})
 	if !isErr || payload["code"] != "invalid_arguments" {
 		t.Errorf("missing channel_id: %v %v", isErr, payload)
 	}
 
-	isErr, payload = handleArgs(t, it, ToolFileUpload, map[string]any{"channel_id": "C1"})
+	isErr, payload = handleArgs(t, it, ToolFileUpload, map[string]any{"work_dir": root, "channel_id": "C1"})
 	if !isErr || payload["code"] != "invalid_arguments" {
 		t.Errorf("missing file: %v %v", isErr, payload)
 	}
 
-	isErr, payload = handleArgs(t, it, ToolFileUploadToThread, map[string]any{"channel_id": "C1", "file": "/x"})
+	isErr, payload = handleArgs(t, it, ToolFileUploadToThread, map[string]any{"work_dir": root, "channel_id": "C1", "file": "/x"})
 	if !isErr || payload["code"] != "invalid_arguments" || !strings.Contains(payload["message"].(string), "thread_ts") {
 		t.Errorf("missing thread_ts: %v %v", isErr, payload)
 	}
 }
 
 func TestHandleNonStringArgsRejected(t *testing.T) {
-	it, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
+	it, root := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	// Numeric channel_id type-asserts to "" and fails required validation
 	// instead of panicking.
-	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{"channel_id": 123, "file": "/x"})
+	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{"work_dir": root, "channel_id": 123, "file": "/x"})
 	if !isErr || payload["code"] != "invalid_arguments" {
 		t.Errorf("numeric channel_id: %v %v", isErr, payload)
 	}
@@ -59,7 +58,7 @@ func TestHandleNonStringArgsRejected(t *testing.T) {
 func TestHandlePathDeniedDetails(t *testing.T) {
 	it, root := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
 	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{
-		"channel_id": "C1", "file": filepath.Join(root, "missing.txt"),
+		"work_dir": root, "channel_id": "C1", "file": filepath.Join(root, "missing.txt"),
 	})
 	if !isErr || payload["code"] != "path_denied" {
 		t.Fatalf("payload = %v", payload)
@@ -71,9 +70,10 @@ func TestHandlePathDeniedDetails(t *testing.T) {
 	if details["reason"] != "not_found" {
 		t.Errorf("reason = %v", details["reason"])
 	}
-	roots, ok := details["allowed_roots"].([]any)
+	// The boundary is the caller's work_dir now, and the denial names it.
+	roots, ok := details["work_dir"].([]any)
 	if !ok || len(roots) != 1 {
-		t.Errorf("allowed_roots = %v", details["allowed_roots"])
+		t.Errorf("work_dir = %v", details["work_dir"])
 	}
 }
 
@@ -83,7 +83,7 @@ func TestHandleSlackErrorShaping(t *testing.T) {
 	file := filepath.Join(root, "f.txt")
 	writeTestFile(t, file)
 
-	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{"channel_id": "C1", "file": file})
+	isErr, payload := handleArgs(t, it, ToolFileUpload, map[string]any{"work_dir": root, "channel_id": "C1", "file": file})
 	if !isErr || payload["code"] != "slack_api_error" {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -105,7 +105,9 @@ func TestDefinitionsSchemasAreValidJSON(t *testing.T) {
 			t.Errorf("%s schema invalid: %v", def.Name, err)
 		}
 		required, _ := schema["required"].([]any)
-		if def.Name == ToolFileUploadToThread && len(required) != 3 {
+		// work_dir joins channel_id, file and thread_ts: a tool that reads or
+		// writes files names the directory it works in (ADR-0003).
+		if def.Name == ToolFileUploadToThread && len(required) != 4 {
 			t.Errorf("%s required = %v", def.Name, required)
 		}
 	}
@@ -128,7 +130,7 @@ func TestHandleDownloadHappyPath(t *testing.T) {
 	it, root := testInjected(t, stub)
 
 	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{
-		"file_id": "F1", "dest_dir": root,
+		"work_dir": root, "file_id": "F1", "dest_dir": root,
 	})
 	if isErr {
 		t.Fatalf("download failed: %v", payload)
@@ -148,7 +150,7 @@ func TestHandleDownloadDestDirDefaultsToWorkspace(t *testing.T) {
 	it, root := testInjected(t, stub)
 
 	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{
-		"file_id": "F1", "workspace_dir": root,
+		"work_dir": root, "file_id": "F1",
 	})
 	if isErr {
 		t.Fatalf("download failed: %v", payload)
@@ -166,9 +168,11 @@ func TestHandleDownloadInvalidArgs(t *testing.T) {
 	if !isErr || payload["code"] != "invalid_arguments" {
 		t.Errorf("missing file_id: %v", payload)
 	}
+	// dest_dir is optional now: it defaults to the work directory, which is
+	// always named, so there is no "where do I put it" left to fail on.
 	isErr, payload = handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F1"})
-	if !isErr || payload["code"] != "invalid_arguments" {
-		t.Errorf("missing dest_dir/workspace_dir: %v", payload)
+	if !isErr || payload["code"] != "work_dir_required" {
+		t.Errorf("missing work_dir: %v", payload)
 	}
 }
 
@@ -177,16 +181,12 @@ func TestHandleDownloadSizePrecheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := containment.NewPolicy([]string{root}, false, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
 	it := &InjectedTools{
-		Policy:   policy,
-		Uploader: &stubUploader{info: &transfer.FileInfo{ID: "F1", Name: "big.bin", Size: 11, DownloadURL: "stub://dl"}},
-		Audit:    &transfer.AuditLog{},
+		MaxFileSize: 10,
+		Uploader:    &stubUploader{info: &transfer.FileInfo{ID: "F1", Name: "big.bin", Size: 11, DownloadURL: "stub://dl"}},
+		Audit:       &transfer.AuditLog{},
 	}
-	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F1", "dest_dir": root})
+	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F1", "dest_dir": root})
 	if !isErr || payload["code"] != "file_too_large" {
 		t.Errorf("payload = %v", payload)
 	}
@@ -197,7 +197,7 @@ func TestHandleDownloadRefusesOverwrite(t *testing.T) {
 	it, root := testInjected(t, stub)
 	writeTestFile(t, filepath.Join(root, "taken.txt"))
 
-	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F1", "dest_dir": root})
+	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F1", "dest_dir": root})
 	if !isErr || payload["code"] != "path_denied" {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -215,7 +215,7 @@ func TestHandleDownloadHostileSlackFilename(t *testing.T) {
 		fetchBytes: []byte("x"),
 	}
 	it, root := testInjected(t, stub)
-	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F1", "dest_dir": root})
+	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F1", "dest_dir": root})
 	if isErr {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -224,7 +224,7 @@ func TestHandleDownloadHostileSlackFilename(t *testing.T) {
 	}
 
 	stub.info = &transfer.FileInfo{ID: "F2", Name: ".zshrc", Size: 1, DownloadURL: "stub://dl"}
-	isErr, payload = handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F2", "dest_dir": root})
+	isErr, payload = handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F2", "dest_dir": root})
 	if !isErr || payload["code"] != "path_denied" {
 		t.Fatalf("hidden filename accepted: %v", payload)
 	}
@@ -233,7 +233,7 @@ func TestHandleDownloadHostileSlackFilename(t *testing.T) {
 func TestHandleDownloadSlackErrorShaping(t *testing.T) {
 	stub := &stubUploader{infoErr: &transfer.SlackError{Method: "files.info", Reason: "file_not_found"}}
 	it, root := testInjected(t, stub)
-	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F404", "dest_dir": root})
+	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F404", "dest_dir": root})
 	if !isErr || payload["code"] != "slack_api_error" {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -249,7 +249,7 @@ func TestHandleDownloadWireLimitShaping(t *testing.T) {
 		fetchErr: fmt.Errorf("wrapped: %w", transfer.ErrTooLarge),
 	}
 	it, root := testInjected(t, stub)
-	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"file_id": "F1", "dest_dir": root})
+	isErr, payload := handleArgs(t, it, ToolFileDownload, map[string]any{"work_dir": root, "file_id": "F1", "dest_dir": root})
 	if !isErr || payload["code"] != "file_too_large" {
 		t.Fatalf("payload = %v", payload)
 	}

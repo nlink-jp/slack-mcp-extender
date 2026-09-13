@@ -1,6 +1,6 @@
 # ADR-0002: 対称 download と書き込み側封じ込め
 
-> Status: Accepted — 2026-07-20
+> Status: Accepted — 2026-07-20。封じ込めの*出どころ*は [ADR-0003](0003-work-dir-as-containment.ja.md) が置換（境界は呼び出しごとの `work_dir`、`allowed_roots` ではない）。
 
 ## 背景
 

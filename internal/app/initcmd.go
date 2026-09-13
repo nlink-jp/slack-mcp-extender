@@ -15,7 +15,8 @@ import (
 
 // runInit interactively scaffolds a per-workspace config: identity of the
 // OAuth client, secret storage, callback port, and — the security decision —
-// the allowed_roots containment boundary. It ends by printing the login
+// the transfer limits. The containment boundary is not configured here any
+// more (ADR-0003). It ends by printing the login
 // command and the Claude Desktop registration snippet.
 func runInit(stdin io.Reader, stdout, stderr io.Writer) int {
 	in := bufio.NewScanner(stdin)
@@ -88,32 +89,15 @@ func runInit(stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	// Containment boundary.
+	// The containment boundary is no longer set here: it is the work_dir the
+	// caller names on every call (ADR-0003). An operator allowlist could not
+	// express what it was for — prefix matching has no per-repository
+	// granularity, so covering a work root meant naming the home directory,
+	// which admits the files the list existed to keep out.
 	fmt.Fprintln(stdout)
-	fmt.Fprintln(stdout, "Allowed roots — the ONLY directories the upload tools may read from.")
-	fmt.Fprintln(stdout, "Keep this narrow: a dedicated exchange directory beats a broad home area.")
-	fmt.Fprintln(stdout, "(empty list = all file access denied until you edit the config)")
-	var roots []string
-	for {
-		root := ask("Add allowed root (absolute path; empty line to finish)", "")
-		if root == "" {
-			break
-		}
-		root = expandTilde(root, home)
-		if !filepath.IsAbs(root) {
-			fmt.Fprintln(stdout, "  not an absolute path — skipped")
-			continue
-		}
-		if fi, err := os.Stat(root); err != nil {
-			if ask("  directory does not exist yet; the server will not start until it does. Keep anyway? (y/N)", "N") != "y" {
-				continue
-			}
-		} else if !fi.IsDir() {
-			fmt.Fprintln(stdout, "  not a directory — skipped")
-			continue
-		}
-		roots = append(roots, root)
-	}
+	fmt.Fprintln(stdout, "Uploads are confined to the work_dir the calling agent names on each call,")
+	fmt.Fprintln(stdout, "so there is no allowlist to configure here. A file outside that directory")
+	fmt.Fprintln(stdout, "cannot be sent to Slack.")
 
 	cfg := config.Config{
 		Upstream: config.Upstream{URL: config.DefaultUpstreamURL},
@@ -126,8 +110,7 @@ func runInit(stdin io.Reader, stdout, stderr io.Writer) int {
 			Scopes:          config.DefaultScopes(),
 			CallbackPort:    port,
 		},
-		AllowedRoots: roots,
-		MaxFileSize:  config.DefaultMaxFileSize,
+		MaxFileSize: config.DefaultMaxFileSize,
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")

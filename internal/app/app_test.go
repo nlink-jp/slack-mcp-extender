@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,16 +67,15 @@ func writeWorkspaceConfig(t *testing.T) string {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{
+	body := `{
 	  "oauth": {
 	    "authorize_url": "https://slack.example.invalid/authorize",
 	    "token_url": "https://slack.example.invalid/token",
 	    "client_id": "EXAMPLE_CLIENT_ID",
 	    "client_secret": "EXAMPLE_SECRET",
 	    "scopes": ["chat:write", "files:write"]
-	  },
-	  "allowed_roots": [%q]
-	}`, root)
+	  }
+	}`
 	path := filepath.Join(dir, "ws.json")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -160,24 +158,26 @@ func TestBuildProxyWithoutTokensExplains(t *testing.T) {
 	}
 }
 
-func TestBuildProxyBadRootExplains(t *testing.T) {
-	// A config whose allowed root no longer exists must fail at startup
-	// with a containment error, not silently narrow the policy.
+// A config that still carries the removed allowed_roots key fails at load with
+// the replacement named, rather than having a containment list the operator
+// believes in silently ignored (ADR-0003).
+func TestConfigWithRemovedAllowedRootsFails(t *testing.T) {
 	dir := t.TempDir()
-	body := fmt.Sprintf(`{
+	body := `{
 	  "oauth": {"authorize_url": "a", "token_url": "t", "client_id": "c", "scopes": ["files:write"]},
-	  "allowed_roots": [%q]
-	}`, filepath.Join(dir, "gone"))
+	  "allowed_roots": ["/tmp"]
+	}`
 	path := filepath.Join(dir, "ws.json")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("a config carrying allowed_roots must fail to load")
 	}
-	_, err = buildProxy(cfg, strings.NewReader(""), &bytes.Buffer{}, func(string, ...any) {})
-	if err == nil || !strings.Contains(err.Error(), "containment policy") {
-		t.Fatalf("err = %v", err)
+	for _, want := range []string{"allowed_roots", "work_dir", "ADR-0003"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
 	}
 }

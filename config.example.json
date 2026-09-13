@@ -41,9 +41,6 @@
     "callback_scheme": "https",
     "client_auth_method": "post"
   },
-  "allowed_roots": [
-    "/absolute/path/to/your/exchange/dir"
-  ],
   "allow_hidden": false,
   "max_file_size": 52428800
 }

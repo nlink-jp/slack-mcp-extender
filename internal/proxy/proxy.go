@@ -171,7 +171,7 @@ func (p *Proxy) handleToolsCall(msg *jsonrpc.Message, raw []byte) error {
 		return p.forwardAndRelay(msg, raw)
 	}
 
-	result := p.Injected.Handle(params.Name, params.Arguments)
+	result := p.Injected.Handle(params.Name, params.Arguments, params.Meta)
 	resp, err := jsonrpc.NewResultResponse(msg.ID, result)
 	if err != nil {
 		return p.writeMessage(jsonrpc.NewErrorResponse(msg.ID, -32603, err.Error()))

@@ -16,8 +16,7 @@ const validBody = `{
     "client_secret_env": "SLACK_MCP_EXTENDER_CLIENT_SECRET",
     "scopes": ["chat:write", "files:write"],
     "callback_port": 7777
-  },
-  "allowed_roots": ["/tmp"]
+  }
 }`
 
 func writeConfig(t *testing.T, body string) string {
@@ -100,7 +99,7 @@ func TestValidateErrors(t *testing.T) {
 		{"empty scopes", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":[]}}`, "scopes"},
 		{"bad callback scheme", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"],"callback_scheme":"gopher"}}`, "callback_scheme"},
 		{"bad auth method", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"],"client_auth_method":"magic"}}`, "client_auth_method"},
-		{"relative root", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"]},"allowed_roots":["relative"]}`, "absolute"},
+		{"removed allowed_roots", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"]},"allowed_roots":["/tmp"]}`, "ADR-0003"},
 		{"negative size", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"]},"max_file_size":-1}`, "max_file_size"},
 		{"negative timeout", `{"oauth":{"authorize_url":"a","token_url":"t","client_id":"c","scopes":["s"]},"timeout_ms":-5}`, "timeout_ms"},
 	}
@@ -198,7 +197,7 @@ func TestWarnings(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	warnings := strings.Join(cfg.Warnings(), "\n")
-	for _, want := range []string{"files:write", "allowed_roots", "client_secret_env"} {
+	for _, want := range []string{"files:write", "client_secret_env"} {
 		if !strings.Contains(warnings, want) {
 			t.Errorf("warnings missing %q: %s", want, warnings)
 		}

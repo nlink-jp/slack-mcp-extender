@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking: `workspace_dir` is now `work_dir`, and every injected tool
+  requires it.** It means the absolute path of a directory the caller can read
+  back, and it *is* the containment boundary: an upload comes from inside it, a
+  download lands inside it, and `dest_dir` defaults to it. See
+  [ADR-0003](docs/en/adr/0003-work-dir-as-containment.md); organization ADR-021.
+- **Breaking: `allowed_roots` is removed from the config**, and a config still
+  carrying it fails at startup with the replacement named. The list could not
+  express what it was for — prefix matching has no per-repository granularity,
+  so covering a work root meant naming the home directory, which admits the
+  credential files the list existed to keep out. What an operator could write
+  was a narrow exchange directory, which in practice meant the file an agent was
+  working on could not be sent. `init` no longer asks for roots.
+- The work directory is validated before it is trusted: absolute, no `~`, no
+  `..`, exists, writable, and never a system location, the home directory
+  itself, or a credential directory (`~/.ssh`, `~/.aws`, `~/.gnupg`,
+  `~/.config/gcloud`, `~/Library/Keychains`, `~/.claude`, `~/.codex`) — checked
+  on both spellings of the path, as given and symlink-resolved.
+- A runtime may supply the directory instead of the model: the server reads
+  `_meta["jp.nlink/work_dir"]` when the argument is absent. The argument wins.
+- Everything ADR-0002 decided stands — canonicalization, hidden-component
+  rejection, regular files only, size caps, never overwriting, the audit log.
+  Only the reference point moves, from the matched root to the work directory.
+
+### Added
+
+- `work_dir_required`, `work_dir_invalid`, `work_dir_not_found`,
+  `work_dir_not_writable`, `work_dir_denied` — the fleet's codes, so a caller
+  sees the same vocabulary from every nlink-jp MCP server.
+
 ## [0.2.0] - 2026-07-20
 
 ### Changed

@@ -1,6 +1,6 @@
 # ADR-0002: symmetric download with write-side containment
 
-> Status: Accepted — 2026-07-20
+> Status: Accepted — 2026-07-20. The containment *source* is replaced by [ADR-0003](0003-work-dir-as-containment.md): the boundary is the per-call `work_dir`, not `allowed_roots`.
 
 ## Context
 

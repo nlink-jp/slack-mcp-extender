@@ -36,17 +36,19 @@ use [swrite](https://github.com/nlink-jp/swrite).
 This tool relays untrusted Slack content, reads and writes local files, and
 moves data in both directions — an exfiltration primitive on the way out
 and a write primitive on the way in, if left unconstrained. File access in
-**both directions** is therefore confined to operator-configured
-**`allowed_roots`**:
+**both directions** is therefore confined to the **`work_dir` the calling
+agent names on every call**:
 
 - canonicalized containment (Abs + Clean + EvalSymlinks), deny-by-default
-- hidden path components (`.git`, `.env`, `.ssh`, …) rejected below the roots
+- hidden path components (`.git`, `.env`, `.ssh`, …) rejected below the work_dir
 - regular files only, size-capped (declared size **and** on the wire),
   structured `path_denied` errors, egress/ingress audit log
 - downloads never overwrite, and a Slack-side filename can influence only
   the (sanitized) name of the saved file, never where it lands
-- containment is defined **only** in the operator's config — never from tool
-  arguments or Slack-derived values
+- the work_dir is validated before it is trusted (absolute, existing,
+  writable, never a system location, your home directory itself, or a
+  credential directory such as `~/.ssh`), and it is the **only** root —
+  never widened from Slack-derived values
 
 ## Installation
 

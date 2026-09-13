@@ -33,8 +33,6 @@ func TestInitHappyPathEnvSecret(t *testing.T) {
 		"1",                 // secret storage: env var
 		"MY_SECRET_ENV",     // env var name
 		"7788",              // callback port
-		root,                // allowed root 1
-		"",                  // finish roots
 	})
 	if exit != exitOK {
 		t.Fatalf("exit = %d (stderr: %s)", exit, stderr)
@@ -61,8 +59,10 @@ func TestInitHappyPathEnvSecret(t *testing.T) {
 	if len(cfg.OAuth.Scopes) != len(config.DefaultScopes()) {
 		t.Errorf("scopes = %d, want %d", len(cfg.OAuth.Scopes), len(config.DefaultScopes()))
 	}
-	if len(cfg.AllowedRoots) != 1 || cfg.AllowedRoots[0] != root {
-		t.Errorf("roots = %v", cfg.AllowedRoots)
+	// There is no containment list to scaffold: the boundary is the work_dir
+	// each call names (ADR-0003).
+	if len(cfg.AllowedRoots) != 0 {
+		t.Errorf("init must not write allowed_roots any more: %v", cfg.AllowedRoots)
 	}
 	if cfg.Upstream.URL != config.DefaultUpstreamURL || cfg.OAuth.AuthorizeURL != config.DefaultAuthorizeURL {
 		t.Errorf("endpoints = %+v", cfg)
@@ -101,7 +101,7 @@ func TestInitLiteralSecretWarns(t *testing.T) {
 		t.Errorf("oauth = %+v", cfg.OAuth)
 	}
 	// Literal secret and empty roots both draw warnings.
-	if !strings.Contains(stdout, "client_secret_env") || !strings.Contains(stdout, "allowed_roots") {
+	if !strings.Contains(stdout, "client_secret_env") || !strings.Contains(stdout, "work_dir") {
 		t.Errorf("expected warnings, got: %s", stdout)
 	}
 }
@@ -118,42 +118,31 @@ func TestInitRefusesOverwrite(t *testing.T) {
 	}
 }
 
-func TestInitRootHandling(t *testing.T) {
+// init used to ask for containment roots and validate each one. ADR-0003
+// removed the list, so what is pinned now is that the prompt is gone and the
+// scaffolded config carries no boundary of its own.
+func TestInitScaffoldsNoContainmentList(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "roots.json")
-	existing := filepath.Join(dir, "yes")
-	if err := os.MkdirAll(existing, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	file := filepath.Join(dir, "afile")
-	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 
-	exit, _, _ := runInitScripted(t, []string{
-		"rootws", cfgPath, "CID", "1", "ENV_NAME", "",
-		"relative/nope",               // skipped: not absolute
-		file,                          // skipped: not a directory
-		filepath.Join(dir, "missing"), // does not exist...
-		"N",                           // ...decline keeping it
-		filepath.Join(dir, "later"),   // does not exist...
-		"y",                           // ...keep anyway
-		existing,                      // exists
-		"",                            // finish
-	})
+	exit, stdout, _ := runInitScripted(t, []string{"rootws", cfgPath, "CID", "1", "ENV_NAME", ""})
 	if exit != exitOK {
 		t.Fatalf("exit = %d", exit)
+	}
+	if strings.Contains(stdout, "Add allowed root") {
+		t.Error("init still asks for allowed roots")
+	}
+	if !strings.Contains(stdout, "work_dir") {
+		t.Error("init should say where uploads are confined to instead")
 	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{filepath.Join(dir, "later"), existing}
-	if len(cfg.AllowedRoots) != 2 || cfg.AllowedRoots[0] != want[0] || cfg.AllowedRoots[1] != want[1] {
-		t.Errorf("roots = %v, want %v", cfg.AllowedRoots, want)
+	if len(cfg.AllowedRoots) != 0 {
+		t.Errorf("roots = %v, want none", cfg.AllowedRoots)
 	}
 }
-
 func TestInitInvalidPort(t *testing.T) {
 	dir := t.TempDir()
 	exit, _, stderr := runInitScripted(t, []string{

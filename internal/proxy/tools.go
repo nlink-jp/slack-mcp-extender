@@ -7,6 +7,7 @@ import (
 	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/jsonrpc"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
+	"github.com/nlink-jp/slack-mcp-extender/internal/workdir"
 )
 
 // Injected tool names. Everything this proxy adds lives in the ext_
@@ -29,11 +30,39 @@ type FileTransfer interface {
 // InjectedTools holds the local tool implementations added to the upstream
 // tool set: containment policy first, then transfer, then audit.
 type InjectedTools struct {
-	Policy   *containment.Policy
-	Uploader FileTransfer
-	Audit    *transfer.AuditLog
+	// AllowHidden and MaxFileSize are the operator's knobs on transfers. The
+	// containment boundary is not one of them any more: it is the work_dir
+	// the caller names on every call (ADR-0003).
+	AllowHidden bool
+	MaxFileSize int64
+	Uploader    FileTransfer
+	Audit       *transfer.AuditLog
 	// Logf receives non-fatal diagnostics (audit write failures).
 	Logf func(format string, args ...any)
+}
+
+// policyFor resolves the caller's work directory and builds the containment
+// policy for one call, with that directory as the only root.
+//
+// The boundary used to be an operator allowlist. It could not express what it
+// was for: prefix matching has no per-repository granularity, so covering a
+// work root meant listing the home directory — which admits the files the list
+// existed to keep out. The caller naming one directory per call is the same
+// guard at the granularity the config could never reach.
+func (it *InjectedTools) policyFor(arg string, meta map[string]json.RawMessage) (string, *containment.Policy, *jsonrpc.ToolResult) {
+	dir, err := workdir.Resolve(arg, meta)
+	if err != nil {
+		var we *workdir.Error
+		if errors.As(err, &we) {
+			return "", nil, errorResult(we.Code, we.Message, nil)
+		}
+		return "", nil, errorResult("internal_error", err.Error(), nil)
+	}
+	policy, perr := containment.NewPolicy([]string{dir}, it.AllowHidden, it.MaxFileSize)
+	if perr != nil {
+		return "", nil, errorResult("internal_error", perr.Error(), nil)
+	}
+	return dir, policy, nil
 }
 
 // Handles reports whether name is an injected tool.
@@ -49,8 +78,8 @@ func (it *InjectedTools) Handles(name string) bool {
 func (it *InjectedTools) Definitions() []jsonrpc.ToolInfo {
 	uploadArgs := `
 		"channel_id": {"type": "string", "description": "ID of the channel to post into (C…/G…/D…). Find it via the Slack tools, e.g. from a channel listing or search result."},
-		"file": {"type": "string", "description": "File to upload: an absolute path, or a path relative to workspace_dir. Must resolve inside the operator-configured allowed roots."},
-		"workspace_dir": {"type": "string", "description": "Absolute base directory for relative paths (e.g. the session working directory)."},
+		"file": {"type": "string", "description": "File to upload: a path relative to work_dir, or an absolute path inside it. Nothing outside work_dir can be uploaded — this file leaves the machine."},
+		"work_dir": {"type": "string", "description": "Absolute path to a directory you can read back — your session or working directory. Uploads are taken from inside it and downloads land in it. It must already exist, and nothing here expands ~ or resolves a relative path."},
 		"comment": {"type": "string", "description": "Optional message text posted together with the file."},
 		"filename": {"type": "string", "description": "Display name shown in Slack (default: the file's basename)."}`
 
@@ -58,12 +87,13 @@ func (it *InjectedTools) Definitions() []jsonrpc.ToolInfo {
 		{
 			Name: ToolFileUpload,
 			Description: "[extension] Upload a local file to Slack and post it as a new root message in a channel. " +
-				"Not part of the official Slack MCP. The file must lie inside the operator-configured allowed roots; " +
+				"Not part of the official Slack MCP. The file must lie inside the work_dir you name on the call — " +
+				"it leaves the machine, so nothing outside the directory you are working in can be sent; " +
 				"the post appears under the authorizing user's own identity.",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {` + uploadArgs + `},
-				"required": ["channel_id", "file"]
+				"required": ["work_dir", "channel_id", "file"]
 			}`),
 		},
 		{
@@ -74,24 +104,24 @@ func (it *InjectedTools) Definitions() []jsonrpc.ToolInfo {
 				"type": "object",
 				"properties": {` + uploadArgs + `,
 					"thread_ts": {"type": "string", "description": "Timestamp (ts) of the message to reply to."}},
-				"required": ["channel_id", "file", "thread_ts"]
+				"required": ["work_dir", "channel_id", "file", "thread_ts"]
 			}`),
 		},
 		{
 			Name: ToolFileDownload,
 			Description: "[extension] Download a Slack file to the local disk. The symmetric counterpart of " +
 				"ext_file_upload: use it to get real files (binaries, archives, anything too large for context) " +
-				"into the operator-configured allowed roots. For reading textual content into context, prefer the " +
+				"into the work_dir you name on the call. For reading textual content into context, prefer the " +
 				"official slack_read_file. Never overwrites an existing file.",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
 					"file_id": {"type": "string", "description": "Slack file ID (F…), e.g. from a message's file attachment listing."},
-					"dest_dir": {"type": "string", "description": "Directory to place the file in: absolute, or relative to workspace_dir. Defaults to workspace_dir. Must exist and resolve inside the allowed roots."},
-					"workspace_dir": {"type": "string", "description": "Absolute base directory for relative paths (e.g. the session working directory)."},
+					"dest_dir": {"type": "string", "description": "Directory to place the file in: relative to work_dir, or an absolute path inside it. Defaults to work_dir itself. Must exist."},
+					"work_dir": {"type": "string", "description": "Absolute path to a directory you can read back — your session or working directory. Downloads land in it. It must already exist, and nothing here expands ~ or resolves a relative path."},
 					"filename": {"type": "string", "description": "Local filename to save as (default: the file's Slack name, sanitized to a bare basename)."}
 				},
-				"required": ["file_id"]
+				"required": ["work_dir", "file_id"]
 			}`),
 		},
 	}
@@ -101,17 +131,17 @@ func (it *InjectedTools) Definitions() []jsonrpc.ToolInfo {
 // failures become isError results carrying a structured JSON error
 // ({code, message, details}), never protocol-level errors, so the agent can
 // read and react to them.
-func (it *InjectedTools) Handle(name string, args map[string]any) *jsonrpc.ToolResult {
+func (it *InjectedTools) Handle(name string, args map[string]any, meta map[string]json.RawMessage) *jsonrpc.ToolResult {
 	if name == ToolFileDownload {
-		return it.handleDownload(args)
+		return it.handleDownload(args, meta)
 	}
-	return it.handleUpload(name, args)
+	return it.handleUpload(name, args, meta)
 }
 
-func (it *InjectedTools) handleUpload(name string, args map[string]any) *jsonrpc.ToolResult {
+func (it *InjectedTools) handleUpload(name string, args map[string]any, meta map[string]json.RawMessage) *jsonrpc.ToolResult {
 	channelID, _ := args["channel_id"].(string)
 	file, _ := args["file"].(string)
-	workspaceDir, _ := args["workspace_dir"].(string)
+	workDirArg, _ := args["work_dir"].(string)
 	comment, _ := args["comment"].(string)
 	filename, _ := args["filename"].(string)
 	threadTS, _ := args["thread_ts"].(string)
@@ -126,8 +156,16 @@ func (it *InjectedTools) handleUpload(name string, args map[string]any) *jsonrpc
 		threadTS = "" // a root-message upload never threads
 	}
 
+	// The work directory is the containment boundary: a file this tool sends
+	// leaves the machine, so it may only come from inside the directory the
+	// caller is working in (organization ADR-021 §7's one exception).
+	workDir, policy, errResult := it.policyFor(workDirArg, meta)
+	if errResult != nil {
+		return errResult
+	}
+
 	// Containment decides; everything below only executes.
-	canonical, err := it.Policy.Resolve(workspaceDir, file)
+	canonical, err := policy.Resolve(workDir, file)
 	if err != nil {
 		return it.pathDenied(name, err, channelID, threadTS)
 	}
@@ -172,20 +210,21 @@ func (it *InjectedTools) handleUpload(name string, args map[string]any) *jsonrpc
 	}
 }
 
-func (it *InjectedTools) handleDownload(args map[string]any) *jsonrpc.ToolResult {
+func (it *InjectedTools) handleDownload(args map[string]any, meta map[string]json.RawMessage) *jsonrpc.ToolResult {
 	fileID, _ := args["file_id"].(string)
 	destDir, _ := args["dest_dir"].(string)
-	workspaceDir, _ := args["workspace_dir"].(string)
+	workDirArg, _ := args["work_dir"].(string)
 	filename, _ := args["filename"].(string)
 
 	if fileID == "" {
 		return errorResult("invalid_arguments", "file_id is required", nil)
 	}
+	workDir, policy, errResult := it.policyFor(workDirArg, meta)
+	if errResult != nil {
+		return errResult
+	}
 	if destDir == "" {
-		if workspaceDir == "" {
-			return errorResult("invalid_arguments", "dest_dir (or workspace_dir) is required", nil)
-		}
-		destDir = workspaceDir
+		destDir = workDir
 	}
 
 	info, err := it.Uploader.Info(fileID)
@@ -203,7 +242,7 @@ func (it *InjectedTools) handleDownload(args map[string]any) *jsonrpc.ToolResult
 
 	// Size precheck against the declared size; the wire limit in FetchTo
 	// re-enforces it during transfer.
-	if cap := it.Policy.MaxSize(); cap > 0 && info.Size > cap {
+	if cap := policy.MaxSize(); cap > 0 && info.Size > cap {
 		it.audit(transfer.AuditEntry{Tool: ToolFileDownload, FileID: fileID, Size: info.Size, Outcome: "denied", Error: "file_too_large"})
 		return errorResult("file_too_large", "file exceeds the configured size cap", map[string]any{
 			"size": info.Size,
@@ -214,16 +253,16 @@ func (it *InjectedTools) handleDownload(args map[string]any) *jsonrpc.ToolResult
 	if filename == "" {
 		filename = info.Name
 	}
-	target, err := it.Policy.ResolveNewFile(workspaceDir, destDir, filename)
+	target, err := policy.ResolveNewFile(workDir, destDir, filename)
 	if err != nil {
 		return it.pathDenied(ToolFileDownload, err, "", "")
 	}
 
-	written, err := it.Uploader.FetchTo(info, target, it.Policy.MaxSize())
+	written, err := it.Uploader.FetchTo(info, target, policy.MaxSize())
 	if err != nil {
 		it.audit(transfer.AuditEntry{Tool: ToolFileDownload, Path: target, FileID: fileID, Outcome: "error", Error: err.Error()})
 		if errors.Is(err, transfer.ErrTooLarge) {
-			return errorResult("file_too_large", err.Error(), map[string]any{"cap": it.Policy.MaxSize()})
+			return errorResult("file_too_large", err.Error(), map[string]any{"cap": policy.MaxSize()})
 		}
 		return errorResult("download_failed", err.Error(), nil)
 	}
@@ -256,9 +295,9 @@ func (it *InjectedTools) pathDenied(tool string, err error, channelID, threadTS 
 		Outcome: "denied", Error: v.Reason,
 	})
 	return errorResult("path_denied", v.Error(), map[string]any{
-		"reason":        v.Reason,
-		"path":          v.Path,
-		"allowed_roots": v.Roots,
+		"reason":   v.Reason,
+		"path":     v.Path,
+		"work_dir": v.Roots,
 	})
 }
 

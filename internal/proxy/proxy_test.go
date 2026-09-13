@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
 )
 
@@ -192,14 +191,10 @@ func testInjected(t *testing.T, uploader FileTransfer) (*InjectedTools, string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := containment.NewPolicy([]string{root}, false, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
 	return &InjectedTools{
-		Policy:   policy,
-		Uploader: uploader,
-		Audit:    &transfer.AuditLog{Path: filepath.Join(root, "..", "audit.jsonl")},
+		MaxFileSize: 0,
+		Uploader:    uploader,
+		Audit:       &transfer.AuditLog{Path: filepath.Join(root, "..", "audit.jsonl")},
 	}, root
 }
 
@@ -360,7 +355,7 @@ func TestToolsCallInjectedHandledLocally(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","file":%q,"comment":"here"}}}`, file))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","work_dir":%q,"file":%q,"comment":"here"}}}`, root, file))
 	got := h.expect()
 
 	if len(h.up.sentLines()) != 0 {
@@ -389,7 +384,7 @@ func TestToolsCallInjectedThread(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ext_file_upload_to_thread","arguments":{"channel_id":"C1","file":%q,"thread_ts":"171.001"}}}`, file))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ext_file_upload_to_thread","arguments":{"channel_id":"C1","work_dir":%q,"file":%q,"thread_ts":"171.001"}}}`, root, file))
 	got := h.expect()
 	if !strings.Contains(got, `\"ok\":true`) {
 		t.Errorf("agent got %q", got)
@@ -411,7 +406,7 @@ func TestToolsCallInjectedPathDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","file":%q}}}`, outside))
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","work_dir":%q,"file":%q}}}`, root, outside))
 	got := h.expect()
 
 	if len(h.up.sentLines()) != 0 {

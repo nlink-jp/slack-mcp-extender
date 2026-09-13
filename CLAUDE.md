@@ -10,14 +10,15 @@ workspace CLAUDE.md) apply on top of these.
   tools/list merge only.
 - **Single user token**: proxy forwarding and uploads share one OAuth session.
   Never introduce a second credential path.
-- **Containment is out-of-band only**: `allowed_roots` comes from the
-  operator's config file. Never derive, widen, or override it from tool
-  arguments, environment of the calling agent, or Slack-derived values.
-  `workspace_dir` is an untrusted tool argument that must resolve inside
-  allowed_roots.
+- **Containment is the caller's `work_dir`, named on every call** (ADR-0003).
+  It is validated before it is trusted — absolute, existing, writable, and
+  never a system location, the home directory itself, or a credential
+  directory — and then it is the *only* root: an upload comes from inside it,
+  a download lands inside it, and nothing outside it can be reached. Never
+  widen it from Slack-derived values, and never add a second source of roots.
 - **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),
-  then: containment → regular-file-only → hidden-component rejection
-  (relative to the matched root) → size cap. Do not reorder checks to run
+  then: containment in the work_dir → regular-file-only → hidden-component
+  rejection (relative to the work_dir) → size cap. Do not reorder checks to run
   on raw input strings.
 - **Zero external Go dependencies** — standard library only.
 - **swrite stays untouched**: bot-identity uploads belong to swrite, not here.

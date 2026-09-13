@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/nlink-jp/slack-mcp-extender/internal/config"
-	"github.com/nlink-jp/slack-mcp-extender/internal/containment"
 	"github.com/nlink-jp/slack-mcp-extender/internal/oauth"
 	"github.com/nlink-jp/slack-mcp-extender/internal/proxy"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transfer"
@@ -56,8 +55,8 @@ func runMCP(args []string, stdout, stderr io.Writer) int {
 	}
 	defer p.Upstream.Close()
 
-	logf("slack-mcp-extender: proxy started (upstream=%s, allowed_roots=%d, state=%s)\n",
-		cfg.Upstream.URL, len(cfg.AllowedRoots), cfg.StateDir)
+	logf("slack-mcp-extender: proxy started (upstream=%s, state=%s)\n",
+		cfg.Upstream.URL, cfg.StateDir)
 	if err := p.Run(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitError
@@ -68,11 +67,6 @@ func runMCP(args []string, stdout, stderr io.Writer) int {
 // buildProxy assembles policy, tokens, transport, and injected tools from a
 // loaded config. Split from runMCP for testability.
 func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(string, ...any)) (*proxy.Proxy, error) {
-	policy, err := containment.NewPolicy(cfg.AllowedRoots, cfg.AllowHidden, cfg.MaxFileSize)
-	if err != nil {
-		return nil, fmt.Errorf("containment policy: %w", err)
-	}
-
 	tokens, err := transport.NewStoredTokenProvider(transport.StoredTokenConfig{
 		StateDir:         cfg.StateDir,
 		TokenURL:         cfg.OAuth.TokenURL,
@@ -92,10 +86,14 @@ func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(strin
 	return &proxy.Proxy{
 		Upstream: up,
 		Injected: &proxy.InjectedTools{
-			Policy:   policy,
-			Uploader: &transfer.Client{Tokens: tokens},
-			Audit:    &transfer.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
-			Logf:     logf,
+			// The containment boundary is the work_dir each call names
+			// (ADR-0003); what the operator still sets is how transfers
+			// behave inside it.
+			AllowHidden: cfg.AllowHidden,
+			MaxFileSize: cfg.MaxFileSize,
+			Uploader:    &transfer.Client{Tokens: tokens},
+			Audit:       &transfer.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
+			Logf:        logf,
 		},
 		In:        in,
 		Out:       out,

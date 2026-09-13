@@ -11,7 +11,7 @@ replies, `ext_file_download` for saving Slack files to disk) run the Slack
 external upload 3-step (`files.getUploadURLExternal` → POST → 
 `files.completeUploadExternal`) under the **same user token** the proxy holds
 (single OAuth session; app shared with scli; user scope `files:write`).
-File access is confined to operator-configured `allowed_roots`
+File access is confined to the `work_dir` each call names (ADR-0003)
 (canonicalized containment, deny-by-default, hidden-component rejection,
 size cap) because the tool is otherwise an exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
@@ -69,12 +69,13 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
 - Slack user tokens are **workspace-scoped**: one config + one Claude Desktop
   MCP registration per workspace. No multiplexing in one process (tool-name
   collisions would break transparency).
-- `workspace_dir` is an **agent-supplied tool argument** (cowork owns its own
-  session directory; a config-fixed dir would be inoperable) — but it is
-  untrusted: containment is enforced solely against config-side
-  `allowed_roots`.
-- Hidden-component rejection applies to path components **below the matched
-  allowed_root** only (a root itself may live under a dot directory).
+- `work_dir` is an **agent-supplied tool argument, required on every injected
+  tool** (the calling agent owns its session directory; a config-fixed one
+  would be inoperable). It is untrusted until validated — absolute, existing,
+  writable, not a system or credential location — and then it *is* the
+  containment root: uploads come from inside it, downloads land in it.
+- Hidden-component rejection applies to path components **below the work_dir**
+  only (the work directory itself may live under a dot directory).
 - The OAuth requested scopes must include `files:write`; adding it requires
   one re-consent per workspace, and token rotation can affect scli (shared
   app) if token stores are separate.

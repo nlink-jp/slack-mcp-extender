@@ -75,8 +75,12 @@ type Config struct {
 	Upstream Upstream `json:"upstream"`
 	OAuth    OAuth    `json:"oauth"`
 
-	// AllowedRoots is the containment boundary for the injected upload
-	// tools. Empty means deny-by-default: no file access at all.
+	// AllowedRoots was the containment boundary for the injected upload
+	// tools, removed in ADR-0003: the boundary is the work_dir the caller
+	// names on every call. The field stays declared so a config that still
+	// carries it is told what happened rather than "unknown field" — a
+	// containment list an operator believes is in force, silently ignored,
+	// is the worst outcome available here.
 	AllowedRoots []string `json:"allowed_roots,omitempty"`
 	AllowHidden  bool     `json:"allow_hidden,omitempty"`
 	MaxFileSize  int64    `json:"max_file_size,omitempty"`
@@ -221,10 +225,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("oauth.client_auth_method %q must be \"post\", \"basic\", or \"none\"", c.OAuth.ClientAuthMethod)
 	}
 
-	for _, root := range c.AllowedRoots {
-		if !filepath.IsAbs(root) {
-			return fmt.Errorf("allowed_roots entry %q must be absolute", root)
-		}
+	if len(c.AllowedRoots) > 0 {
+		return fmt.Errorf("allowed_roots was removed in ADR-0003: the containment boundary is now the work_dir " +
+			"each call names, so uploads come from the directory the caller is working in and downloads land there. " +
+			"Delete the key")
 	}
 	if c.MaxFileSize < 0 {
 		return fmt.Errorf("max_file_size must not be negative")
@@ -296,9 +300,6 @@ func (c *Config) Warnings() []string {
 	var w []string
 	if !slices.Contains(c.OAuth.Scopes, "files:write") {
 		w = append(w, "oauth.scopes does not include \"files:write\" — the injected upload tools will fail")
-	}
-	if len(c.AllowedRoots) == 0 {
-		w = append(w, "allowed_roots is empty — file access is denied by default; uploads will be rejected until roots are registered")
 	}
 	if c.OAuth.ClientSecret != "" {
 		w = append(w, "oauth.client_secret is stored literally in the config file — prefer client_secret_env")

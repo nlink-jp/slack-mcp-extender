@@ -83,6 +83,10 @@ func NewResultResponse(id json.RawMessage, result any) (*Message, error) {
 type ToolCallParams struct {
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+	// Meta carries the request-level `_meta` object. A calling runtime uses
+	// it to hand this server per-session facts — the work directory above
+	// all — without every tool declaring them in its schema.
+	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
 }
 
 // ParseToolCallParams extracts tool call parameters.

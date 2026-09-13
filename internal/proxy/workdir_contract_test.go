@@ -63,3 +63,34 @@ func TestWorkDirIsRequiredOnEveryInjectedTool(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryRequiredNameIsDeclared is the regression for a tool list that a
+// strict client refuses outright. Vertex AI validates `required` against
+// `properties` and answers a whole tools/list with
+// "schema at top-level requires unspecified property 'work_dir'" — one bad
+// schema and the session cannot start at all (2026-09-14, gem-agent).
+//
+// The existing contract test checks the other direction (declared => required)
+// and is blind to this one; JSON Schema itself permits it, so nothing else
+// catches it either.
+func TestEveryRequiredNameIsDeclared(t *testing.T) {
+	for _, tool := range (&InjectedTools{}).Definitions() {
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
+		}
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("%s: input schema does not marshal: %v", tool.Name, err)
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("%s: input schema is not valid JSON: %v", tool.Name, err)
+		}
+		for _, name := range schema.Required {
+			if _, ok := schema.Properties[name]; !ok {
+				t.Errorf("tool %q requires %q but does not declare it in properties: "+
+					"a strict client refuses the whole tool list", tool.Name, name)
+			}
+		}
+	}
+}

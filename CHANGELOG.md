@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to fill in. It now says the key is gone and what replaced it.
 - The package doc described containment as operator-configured.
 
+### Added
+
+- A contract test walking every injected tool: no retired name in a schema or
+  a description, and `work_dir` declared and required on all three. ADR-0003
+  asked for this test and the release shipped without it.
+
 ## [0.3.0] - 2026-09-13
 
 ### Changed

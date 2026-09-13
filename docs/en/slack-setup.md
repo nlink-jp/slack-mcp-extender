@@ -92,12 +92,13 @@ Edit it:
   value (the file is then the secret store; keep it 0600).
 - `oauth.scopes` — must match the user scopes the app permits and include
   `files:write`.
-- `allowed_roots` — the **absolute** directories the upload tools may read
-  from. This is the security boundary: nothing outside these roots can be
-  uploaded, hidden entries (`.git`, `.env`, …) below them are rejected,
-  and an empty list denies all file access. Choose the narrowest
-  directories that work — e.g. a dedicated exchange directory, or your
-  agent's session/output area.
+- There is no `allowed_roots` key any more (removed in ADR-0003; a config
+  that still carries it fails to load, naming the replacement). The security
+  boundary is the `work_dir` each call names: nothing outside that directory
+  can be uploaded, downloads land inside it, and hidden entries (`.git`,
+  `.env`, …) below it are still rejected. The caller supplies it per call, so
+  the boundary needs no configuration — and can be as narrow as one session's
+  own directory, which a prefix list could never express.
 
 Check the result:
 
@@ -154,7 +155,7 @@ tool unchanged, plus `ext_file_upload`, `ext_file_upload_to_thread`, and `ext_fi
 |---|---|
 | `no stored tokens (run ... login first)` | Step 4 not done for this config, or the state dir moved. |
 | `HTTP 401: authentication failed after token refresh` | Token revoked — run `login` again. |
-| Tool error `path_denied` | The file resolves outside `allowed_roots` (or is hidden / too large / not a regular file). The error's `details` say which rule and which roots. |
+| Tool error `path_denied` | The file resolves outside the call's `work_dir` (or is hidden / too large / not a regular file). The error's `details` say which rule and which root. |
 | Tool error `slack_api_error: not_in_channel` | The authorizing user is not a member of the target channel — join it in Slack first. |
 | Browser warning on the callback | Expected (self-signed loopback TLS) — click through. |
 | A freshly created channel is not found by the search tools | Slack's search index lags new channels. Ask the agent to use a channel ID directly, or wait for indexing. |

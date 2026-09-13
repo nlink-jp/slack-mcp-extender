@@ -88,11 +88,12 @@ chmod 600 ~/.config/slack-mcp-extender/myworkspace.json
   になるので 0600 を維持）
 - `oauth.scopes` — App が許可する user スコープと一致させ、`files:write` を
   含めること
-- `allowed_roots` — upload ツールが読んでよい**絶対パス**のディレクトリ群。
-  ここがセキュリティ境界です: roots の外は一切アップロードできず、roots 配下でも
-  隠しエントリ（`.git`, `.env` など）は拒否され、空リストなら全ファイルアクセス
-  拒否。動作する最小の範囲 — 専用の受け渡しディレクトリや、エージェントの
-  セッション/出力領域など — を指定してください。
+- `allowed_roots` は**廃止されました**（ADR-0003。まだ書かれている config は
+  置き換え先を名指しして読み込みに失敗します）。セキュリティ境界は呼び出しごとに
+  渡される `work_dir` です: その外へはアップロードできず、ダウンロードはその中に
+  着地し、配下の隠しエントリ（`.git`, `.env` など）は従来どおり拒否されます。
+  呼び出し側が毎回指定するので設定は不要で、しかも「そのセッションのディレクトリ
+  だけ」という、prefix の一覧では表現できない狭さにできます。
 
 確認:
 
@@ -148,7 +149,7 @@ Claude Desktop を再起動すると、純正 Slack MCP の全ツールがその
 |---|---|
 | `no stored tokens (run ... login first)` | この config で手順 4 が未実施、または state ディレクトリが移動された |
 | `HTTP 401: authentication failed after token refresh` | トークン失効 — `login` をやり直す |
-| ツールエラー `path_denied` | ファイルが `allowed_roots` の外に解決される（または隠し・サイズ超過・通常ファイル以外）。`details` にどのルールとどの roots かが入っている |
+| ツールエラー `path_denied` | ファイルが呼び出しの `work_dir` の外に解決される（または隠し・サイズ超過・通常ファイル以外）。`details` にどのルールとどの root かが入っている |
 | ツールエラー `slack_api_error: not_in_channel` | 認可ユーザーが対象チャンネルに未参加 — 先に Slack 側で参加する |
 | callback でブラウザ警告 | 想定内（自己署名 loopback TLS）— そのまま進む |
 | 作成直後のチャンネルが検索ツールで見つからない | Slack の検索インデックスは新規チャンネルの反映が遅れる。チャンネル ID を直接指定するか、反映を待つ |

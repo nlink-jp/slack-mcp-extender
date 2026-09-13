@@ -5,10 +5,11 @@
 // (upload_file) or a thread reply (upload_file_to_thread) using the Slack
 // external upload 3-step, under the same user token the proxy already holds —
 // a single OAuth session for both forwarding and upload. File access is
-// confined to operator-configured allowed_roots (canonicalized containment,
+// confined to the work_dir each call names (canonicalized containment,
 // deny-by-default, hidden path components rejected): the tool relays
-// untrusted Slack content, reads local files, and sends data out, so
-// containment is defined out-of-band only. Zero external dependencies.
+// untrusted Slack content, reads local files, and sends data out, so every
+// file argument is resolved inside that one directory. Zero external
+// dependencies.
 package main
 
 import (

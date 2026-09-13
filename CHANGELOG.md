@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-13
+
+### Fixed
+
+- **The path errors still told the model to register `allowed_roots` in the
+  operator config** — a key 0.3.0 removed and now refuses to load. They name
+  what actually supplies the root: the `work_dir` of the call. The
+  `requires workspace_dir` / `workspace_dir must be absolute` details say
+  `work_dir` too, which is the argument that exists.
+- `--help` still listed `allowed_roots` among what `init` asks for; `init`
+  stopped asking in 0.3.0.
+- The setup guide (both languages) documented `allowed_roots` as a config key
+  to fill in. It now says the key is gone and what replaced it.
+- The package doc described containment as operator-configured.
+
 ## [0.3.0] - 2026-09-13
 
 ### Changed

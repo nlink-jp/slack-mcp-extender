@@ -58,8 +58,10 @@ func TestDenyByDefaultWithNoRoots(t *testing.T) {
 	p := mustPolicy(t, nil, false, 0)
 	_, err := p.Resolve("", "/etc/hosts")
 	v := wantViolation(t, err, ReasonNoRoots)
-	if !strings.Contains(v.Detail, "denied by default") {
-		t.Errorf("detail = %q", v.Detail)
+	// The message has to name what supplies the root now; "register roots in
+	// the operator config" was advice the server stopped accepting in ADR-0003.
+	if !strings.Contains(v.Detail, "work_dir") {
+		t.Errorf("detail = %q, want it to name work_dir as the root", v.Detail)
 	}
 }
 

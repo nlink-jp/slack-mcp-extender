@@ -4,9 +4,11 @@
 // unless confined — so every file argument passes through this package
 // before it is opened.
 //
-// The policy is defined ONLY by the operator's config (allowed roots, hidden
-// opt-out, size cap). Tool arguments — including workspace_dir — are
-// untrusted inputs that must resolve inside the policy; they never widen it.
+// The policy's only root is the work_dir the call named (ADR-0003): the
+// operator allowlist it replaced could not express what it was for, because
+// prefix matching has no per-repository granularity. The operator still owns
+// the hidden opt-out and the size cap. Every other tool argument is untrusted
+// input that must resolve inside the policy; none of them widens it.
 //
 // Check order (do not reorder; each stage assumes the previous ones):
 //
@@ -99,38 +101,38 @@ func (p *Policy) Roots() []string {
 }
 
 // Resolve validates a file argument against the policy and returns the
-// canonical path to open. file may be absolute, or relative to workspaceDir
+// canonical path to open. file may be absolute, or relative to workDir
 // (which must then be absolute — it is an untrusted tool argument and gets
 // no default). Any violation is returned as *Violation.
-func (p *Policy) Resolve(workspaceDir, file string) (string, error) {
+func (p *Policy) Resolve(workDir, file string) (string, error) {
 	if len(p.roots) == 0 {
 		return "", &Violation{
 			Reason: ReasonNoRoots,
 			Path:   file,
-			Detail: "no allowed_roots configured; file access is denied by default (register roots via the operator config)",
+			Detail: "no root configured for this policy; the root is the work_dir the call named (ADR-0003)",
 		}
 	}
 
 	// Assemble the raw path from the untrusted arguments.
 	raw := file
 	if !filepath.IsAbs(raw) {
-		if workspaceDir == "" {
+		if workDir == "" {
 			return "", &Violation{
 				Reason: ReasonNotAbsolute,
 				Path:   file,
 				Roots:  p.Roots(),
-				Detail: fmt.Sprintf("relative file %q requires workspace_dir", file),
+				Detail: fmt.Sprintf("relative file %q requires work_dir", file),
 			}
 		}
-		if !filepath.IsAbs(workspaceDir) {
+		if !filepath.IsAbs(workDir) {
 			return "", &Violation{
 				Reason: ReasonNotAbsolute,
-				Path:   workspaceDir,
+				Path:   workDir,
 				Roots:  p.Roots(),
-				Detail: fmt.Sprintf("workspace_dir %q must be absolute", workspaceDir),
+				Detail: fmt.Sprintf("work_dir %q must be absolute", workDir),
 			}
 		}
-		raw = filepath.Join(workspaceDir, raw)
+		raw = filepath.Join(workDir, raw)
 	}
 
 	// Stage 1: canonicalize. EvalSymlinks requires the path to exist —
@@ -233,17 +235,17 @@ func SanitizeFilename(name string) (string, error) {
 }
 
 // ResolveNewFile validates a destination for a NEW file (the write-side
-// mirror of Resolve). destDir may be absolute or relative to workspaceDir;
+// mirror of Resolve). destDir may be absolute or relative to workDir;
 // it must exist, canonicalize into an allowed root, and — unless
 // allow_hidden is set — contribute no hidden component below the matched
 // root. filename is sanitized to a base component; the target must not
 // already exist. Returns the canonical target path to create.
-func (p *Policy) ResolveNewFile(workspaceDir, destDir, filename string) (string, error) {
+func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, error) {
 	if len(p.roots) == 0 {
 		return "", &Violation{
 			Reason: ReasonNoRoots,
 			Path:   destDir,
-			Detail: "no allowed_roots configured; file access is denied by default (register roots via the operator config)",
+			Detail: "no root configured for this policy; the root is the work_dir the call named (ADR-0003)",
 		}
 	}
 
@@ -259,23 +261,23 @@ func (p *Policy) ResolveNewFile(workspaceDir, destDir, filename string) (string,
 
 	raw := destDir
 	if !filepath.IsAbs(raw) {
-		if workspaceDir == "" {
+		if workDir == "" {
 			return "", &Violation{
 				Reason: ReasonNotAbsolute,
 				Path:   destDir,
 				Roots:  p.Roots(),
-				Detail: fmt.Sprintf("relative dest_dir %q requires workspace_dir", destDir),
+				Detail: fmt.Sprintf("relative dest_dir %q requires work_dir", destDir),
 			}
 		}
-		if !filepath.IsAbs(workspaceDir) {
+		if !filepath.IsAbs(workDir) {
 			return "", &Violation{
 				Reason: ReasonNotAbsolute,
-				Path:   workspaceDir,
+				Path:   workDir,
 				Roots:  p.Roots(),
-				Detail: fmt.Sprintf("workspace_dir %q must be absolute", workspaceDir),
+				Detail: fmt.Sprintf("work_dir %q must be absolute", workDir),
 			}
 		}
-		raw = filepath.Join(workspaceDir, raw)
+		raw = filepath.Join(workDir, raw)
 	}
 
 	// The parent directory must exist so it can be canonicalized — all

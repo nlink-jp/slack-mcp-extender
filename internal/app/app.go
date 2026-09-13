@@ -54,7 +54,7 @@ Usage:
 
 Commands:
   mcp --config <cfg>       Run the stdio MCP server (transparent proxy + injected upload tools)
-  init                     Interactively create a workspace config (allowed_roots, OAuth client)
+  init                     Interactively create a workspace config (OAuth client)
                            and print the Claude Desktop registration snippet
   login --config <cfg>     Run the OAuth authorization_code flow and store tokens
                            (once per workspace)

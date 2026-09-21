@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **`work_dir` may no longer be this server's own config or state
+  directory.** Organization ADR-021 §4 closes the work-directory checks with
+  "not a system location … and not the server's own config or state
+  directory" → `work_dir_denied`, and this server's `workdir` package had no
+  hook for it at all. The consequence here is sharper than elsewhere in the
+  fleet, because ADR-021 §7's one exception is this server: an upload is
+  taken from inside `work_dir` and **leaves the machine**. A caller could
+  pass `work_dir = <state dir>` and have `ext_file_upload` post
+  `tokens.json` — the OAuth access and refresh tokens — into a Slack
+  channel, or the workspace config with its client secret, on a model's
+  say-so. Now refused, subdirectories included: the state directory, the
+  directory the config was loaded from, and `~/.config/slack-mcp-extender`
+  (so other workspaces' configs are covered too, not only this one's).
+- `workdir.Resolve` and `workdir.Validate` take the list as a parameter
+  rather than reading a package variable set at startup: a variable has an
+  initialization order, and a call that arrived before it was set would
+  resolve with nothing denied and look exactly like a call that was allowed.
+  The existing system-location, home-directory and credential checks are
+  unchanged.
+
 ## [0.3.2] - 2026-09-14
 
 ### Added

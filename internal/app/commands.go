@@ -91,9 +91,13 @@ func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(strin
 			// behave inside it.
 			AllowHidden: cfg.AllowHidden,
 			MaxFileSize: cfg.MaxFileSize,
-			Uploader:    &transfer.Client{Tokens: tokens},
-			Audit:       &transfer.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
-			Logf:        logf,
+			// Our own config and state directories are not a workspace: the
+			// state directory holds tokens.json, and an upload leaves the
+			// machine (ADR-021 §4, §7).
+			ServerDirs: cfg.ServerOwnedDirs(),
+			Uploader:   &transfer.Client{Tokens: tokens},
+			Audit:      &transfer.AuditLog{Path: filepath.Join(cfg.StateDir, "audit.jsonl")},
+			Logf:       logf,
 		},
 		In:        in,
 		Out:       out,

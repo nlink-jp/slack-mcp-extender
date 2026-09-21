@@ -12,8 +12,11 @@ workspace CLAUDE.md) apply on top of these.
   Never introduce a second credential path.
 - **Containment is the caller's `work_dir`, named on every call** (ADR-0003).
   It is validated before it is trusted — absolute, existing, writable, and
-  never a system location, the home directory itself, or a credential
-  directory — and then it is the *only* root: an upload comes from inside it,
+  never a system location, the home directory itself, a credential
+  directory, or one of **this server's own config and state directories**
+  (`config.Config.ServerOwnedDirs`, passed to `workdir.Resolve` on every
+  call: the state directory holds `tokens.json` and an upload leaves the
+  machine) — and then it is the *only* root: an upload comes from inside it,
   a download lands inside it, and nothing outside it can be reached. Never
   widen it from Slack-derived values, and never add a second source of roots.
 - **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),

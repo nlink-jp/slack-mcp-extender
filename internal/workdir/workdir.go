@@ -87,7 +87,14 @@ var sensitiveHomeTrees = []string{
 // Resolve returns the validated work directory for one call: the tool's
 // work_dir argument, else the runtime hint in the request's `_meta`, else an
 // error. The returned path is absolute and symlink-resolved.
-func Resolve(arg string, meta map[string]json.RawMessage) (string, error) {
+//
+// serverDirs are this server's own config and state directories, refused
+// along with everything under them (organization ADR-021 §4). It is a
+// parameter rather than a package variable set at startup because a variable
+// has an initialization order: a call that arrived before it was set would
+// resolve with nothing denied, and would look exactly like a call that was
+// allowed. A caller that has nothing to deny passes nil, and has to say so.
+func Resolve(arg string, meta map[string]json.RawMessage, serverDirs []string) (string, error) {
 	dir := strings.TrimSpace(arg)
 	if dir == "" {
 		hint, err := metaHint(meta)
@@ -101,11 +108,11 @@ func Resolve(arg string, meta map[string]json.RawMessage) (string, error) {
 			"work_dir is required: pass the absolute path of a directory you can read back "+
 				"(your session or working directory). Uploads are taken from it and downloads land in it.")
 	}
-	return Validate(dir)
+	return Validate(dir, serverDirs)
 }
 
 // Validate applies the closed list of checks and returns the resolved path.
-func Validate(dir string) (string, error) {
+func Validate(dir string, serverDirs []string) (string, error) {
 	if strings.HasPrefix(dir, "~") {
 		return "", newErr(CodeInvalid, "work_dir %q starts with ~: nothing expands it on this path — pass the absolute path", dir)
 	}
@@ -130,7 +137,7 @@ func Validate(dir string) (string, error) {
 	if !fi.IsDir() {
 		return "", newErr(CodeNotFound, "work_dir %q is not a directory", dir)
 	}
-	if why := denied(dir, resolved); why != "" {
+	if why := denied(dir, resolved, serverDirs); why != "" {
 		return "", newErr(CodeDenied, "work_dir %q is refused: %s", dir, why)
 	}
 	if err := writable(resolved); err != nil {
@@ -146,7 +153,11 @@ func Validate(dir string) (string, error) {
 // symlink: ~/.ssh/config pointing into a cloud-sync folder stops looking like
 // ~/.ssh once resolved, and comparing only the unresolved form lets a planted
 // link through instead.
-func denied(raw, resolved string) string {
+//
+// serverDirs — this server's own config and state directories — are checked
+// before the home-relative list, because that list gives up when the home
+// directory cannot be determined and this check must not depend on it.
+func denied(raw, resolved string, serverDirs []string) string {
 	forms := pathForms(raw, resolved)
 	for _, d := range deniedExact {
 		for _, p := range forms {
@@ -159,6 +170,19 @@ func denied(raw, resolved string) string {
 		for _, p := range forms {
 			if within(p, d) {
 				return "it is inside the system directory " + d
+			}
+		}
+	}
+	for _, d := range serverDirs {
+		if d == "" {
+			continue
+		}
+		for _, entry := range pathForms(d, d) {
+			for _, p := range forms {
+				if within(p, entry) {
+					return "it is inside this server's own directory " + d +
+						", which holds its configuration and its OAuth tokens"
+				}
 			}
 		}
 	}

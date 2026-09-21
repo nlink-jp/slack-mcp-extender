@@ -239,6 +239,37 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ServerOwnedDirs returns this server's own config and state directories:
+// the ones a `work_dir` may never be, together with everything under them
+// (organization ADR-021 §4 → `work_dir_denied`).
+//
+// This server is §7's one exception — an upload leaves the machine — so the
+// stakes here are not "the server writes in the wrong place" but "a model
+// asks the server to send its own OAuth tokens to Slack". The three entries:
+//
+//   - StateDir, which holds tokens.json and the audit log;
+//   - the directory the config was loaded from, because the config file
+//     carries the OAuth client secret;
+//   - DefaultConfigDir, where bare `--config <name>` resolves, so the other
+//     workspaces' configs are covered too and not just this one's.
+//
+// Empty entries are dropped; duplicates are harmless and left in.
+func (c *Config) ServerOwnedDirs() []string {
+	var dirs []string
+	if c.StateDir != "" {
+		dirs = append(dirs, c.StateDir)
+	}
+	if c.Path != "" {
+		if abs, err := filepath.Abs(c.Path); err == nil {
+			dirs = append(dirs, filepath.Dir(abs))
+		}
+	}
+	if dir, err := DefaultConfigDir(); err == nil && dir != "" {
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
 // DefaultConfigDir returns the default per-workspace config directory
 // (~/.config/slack-mcp-extender). init writes there by default, and bare
 // --config names resolve against it.

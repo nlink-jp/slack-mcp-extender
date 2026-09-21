@@ -72,8 +72,26 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
 - `work_dir` is an **agent-supplied tool argument, required on every injected
   tool** (the calling agent owns its session directory; a config-fixed one
   would be inoperable). It is untrusted until validated — absolute, existing,
-  writable, not a system or credential location — and then it *is* the
+  writable, not a system or credential location, and not one of this
+  server's own config or state directories — and then it *is* the
   containment root: uploads come from inside it, downloads land in it.
+- **`workdir.Resolve`/`Validate` take the server's own directories as a
+  parameter, not a package variable.** A variable has an initialization
+  order, and a call that arrived before it was set would resolve with
+  nothing denied and look exactly like a call that was allowed. The list
+  comes from `config.Config.ServerOwnedDirs` — the state directory
+  (`tokens.json`, the audit log), the directory the config was loaded from
+  (the config carries the OAuth client secret), and `DefaultConfigDir`
+  (where bare `--config <name>` resolves, so other workspaces' configs are
+  covered too) — is carried on `proxy.InjectedTools.ServerDirs`, filled once
+  in `buildProxy`, and reaches the resolver through `policyFor`, the single
+  place a work directory is resolved. This matters more here than anywhere
+  else in the fleet: ADR-021 §7's one exception is that an upload leaves the
+  machine, so a `work_dir` in the state directory means "send tokens.json to
+  Slack". Two tests pin the two halves:
+  `proxy.TestWorkDirRefusesServerStateDir` (the tools pass the list) and
+  `app.TestBuildProxyDeclaresTheServersOwnDirs` (the assembled server fills
+  it).
 - Hidden-component rejection applies to path components **below the work_dir**
   only (the work directory itself may live under a dot directory).
 - The OAuth requested scopes must include `files:write`; adding it requires

@@ -35,8 +35,14 @@ type InjectedTools struct {
 	// the caller names on every call (ADR-0003).
 	AllowHidden bool
 	MaxFileSize int64
-	Uploader    FileTransfer
-	Audit       *transfer.AuditLog
+	// ServerDirs are this server's own config and state directories, refused
+	// as a work directory along with everything under them (organization
+	// ADR-021 §4). They come from the loaded config
+	// (config.Config.ServerOwnedDirs), because the state directory is
+	// per-workspace and only the config knows where it is.
+	ServerDirs []string
+	Uploader   FileTransfer
+	Audit      *transfer.AuditLog
 	// Logf receives non-fatal diagnostics (audit write failures).
 	Logf func(format string, args ...any)
 }
@@ -49,8 +55,12 @@ type InjectedTools struct {
 // work root meant listing the home directory — which admits the files the list
 // existed to keep out. The caller naming one directory per call is the same
 // guard at the granularity the config could never reach.
+//
+// This is the only place a work directory is resolved, so it is the only
+// place the server's own directories have to be refused — a tool added later
+// reaches a validated directory or a refusal, never a raw argument.
 func (it *InjectedTools) policyFor(arg string, meta map[string]json.RawMessage) (string, *containment.Policy, *jsonrpc.ToolResult) {
-	dir, err := workdir.Resolve(arg, meta)
+	dir, err := workdir.Resolve(arg, meta, it.ServerDirs)
 	if err != nil {
 		var we *workdir.Error
 		if errors.As(err, &we) {

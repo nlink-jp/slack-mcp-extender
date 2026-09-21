@@ -108,7 +108,7 @@ func (u *Client) Upload(req UploadRequest) (*UploadResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	uploadReq, err := http.NewRequest(http.MethodPost, urlResp.UploadURL, f)
 	if err != nil {
@@ -121,7 +121,7 @@ func (u *Client) Upload(req UploadRequest) (*UploadResult, error) {
 		return nil, fmt.Errorf("upload bytes: %w", err)
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("upload bytes: HTTP %d: %s", resp.StatusCode, string(body))
 	}
@@ -204,7 +204,7 @@ func (u *Client) apiCallOnce(method, apiMethod string, query url.Values, jsonBod
 	if err != nil {
 		return fmt.Errorf("%s: %w", apiMethod, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {

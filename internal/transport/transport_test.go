@@ -222,7 +222,7 @@ func TestSSEJSONResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tr.Close()
+	defer func() { _ = tr.Close() }()
 
 	if err := tr.Send([]byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); err != nil {
 		t.Fatalf("Send: %v", err)
@@ -253,7 +253,7 @@ func TestSSEStreamResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tr.Close()
+	defer func() { _ = tr.Close() }()
 
 	if err := tr.Send([]byte(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`)); err != nil {
 		t.Fatalf("Send: %v", err)
@@ -285,7 +285,7 @@ func TestSSE401RetryOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tr.Close()
+	defer func() { _ = tr.Close() }()
 
 	if err := tr.Send([]byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); err != nil {
 		t.Fatalf("Send after retry: %v", err)
@@ -311,7 +311,7 @@ func TestSSEErrorStatusSurfaced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tr.Close()
+	defer func() { _ = tr.Close() }()
 
 	err = tr.Send([]byte(`{}`))
 	if err == nil || !strings.Contains(err.Error(), "502") {
@@ -342,7 +342,7 @@ func TestSSESessionTerminationOnClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr.ReadLine()
-	tr.Close()
+	_ = tr.Close()
 	if !deleteSeen.Load() {
 		t.Error("session DELETE not sent on Close")
 	}

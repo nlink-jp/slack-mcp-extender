@@ -104,13 +104,13 @@ func TestHappyPathWorkspaceRelative(t *testing.T) {
 func TestRelativeFileRequiresWorkspaceDir(t *testing.T) {
 	p := mustPolicy(t, []string{canonTemp(t)}, false, 0)
 	_, err := p.Resolve("", "out/deck.pdf")
-	wantViolation(t, err, ReasonNotAbsolute)
+	_ = wantViolation(t, err, ReasonNotAbsolute)
 }
 
 func TestRelativeWorkspaceDirRejected(t *testing.T) {
 	p := mustPolicy(t, []string{canonTemp(t)}, false, 0)
 	_, err := p.Resolve("relative/dir", "deck.pdf")
-	wantViolation(t, err, ReasonNotAbsolute)
+	_ = wantViolation(t, err, ReasonNotAbsolute)
 }
 
 func TestDotDotTraversalEscape(t *testing.T) {
@@ -124,11 +124,11 @@ func TestDotDotTraversalEscape(t *testing.T) {
 
 	// Absolute path with .. escaping the root.
 	_, err := p.Resolve("", filepath.Join(root, "..", "secret.txt"))
-	wantViolation(t, err, ReasonOutsideRoots)
+	_ = wantViolation(t, err, ReasonOutsideRoots)
 
 	// Relative path with .. escaping via workspace_dir.
 	_, err = p.Resolve(root, filepath.Join("..", "secret.txt"))
-	wantViolation(t, err, ReasonOutsideRoots)
+	_ = wantViolation(t, err, ReasonOutsideRoots)
 }
 
 func TestSiblingPrefixNotContained(t *testing.T) {
@@ -141,7 +141,7 @@ func TestSiblingPrefixNotContained(t *testing.T) {
 
 	p := mustPolicy(t, []string{root}, false, 0)
 	_, err := p.Resolve("", filepath.Join(base, "database", "f.txt"))
-	wantViolation(t, err, ReasonOutsideRoots)
+	_ = wantViolation(t, err, ReasonOutsideRoots)
 }
 
 func TestSymlinkEscape(t *testing.T) {
@@ -168,7 +168,7 @@ func TestNotFound(t *testing.T) {
 	root := canonTemp(t)
 	p := mustPolicy(t, []string{root}, false, 0)
 	_, err := p.Resolve("", filepath.Join(root, "missing.txt"))
-	wantViolation(t, err, ReasonNotFound)
+	_ = wantViolation(t, err, ReasonNotFound)
 }
 
 func TestDirectoryRejected(t *testing.T) {
@@ -179,7 +179,7 @@ func TestDirectoryRejected(t *testing.T) {
 	}
 	p := mustPolicy(t, []string{root}, false, 0)
 	_, err := p.Resolve("", sub)
-	wantViolation(t, err, ReasonNotRegularFile)
+	_ = wantViolation(t, err, ReasonNotRegularFile)
 }
 
 func TestHiddenComponentDirect(t *testing.T) {
@@ -195,7 +195,7 @@ func TestHiddenComponentDirect(t *testing.T) {
 		filepath.Join(root, "sub", ".ssh", "id_rsa"),
 	} {
 		_, err := p.Resolve("", f)
-		wantViolation(t, err, ReasonHiddenComponent)
+		_ = wantViolation(t, err, ReasonHiddenComponent)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestHiddenViaSymlinkResolution(t *testing.T) {
 
 	p := mustPolicy(t, []string{root}, false, 0)
 	_, err := p.Resolve("", link)
-	wantViolation(t, err, ReasonHiddenComponent)
+	_ = wantViolation(t, err, ReasonHiddenComponent)
 }
 
 func TestDotParentedAllowedRootStillWorks(t *testing.T) {
@@ -251,7 +251,7 @@ func TestSizeCap(t *testing.T) {
 
 	over := mustPolicy(t, []string{root}, false, 99)
 	_, err := over.Resolve("", file)
-	wantViolation(t, err, ReasonTooLarge)
+	_ = wantViolation(t, err, ReasonTooLarge)
 
 	exact := mustPolicy(t, []string{root}, false, 100)
 	if _, err := exact.Resolve("", file); err != nil {
@@ -364,14 +364,14 @@ func TestResolveNewFileDenials(t *testing.T) {
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := p.ResolveNewFile(tt.wsDir, tt.dir, tt.file)
-			wantViolation(t, err, tt.reason)
+			_ = wantViolation(t, err, tt.reason)
 		})
 	}
 
 	// Deny-by-default with no roots.
 	empty := mustPolicy(t, nil, false, 0)
 	_, err := empty.ResolveNewFile("", root, "f.txt")
-	wantViolation(t, err, ReasonNoRoots)
+	_ = wantViolation(t, err, ReasonNoRoots)
 }
 
 func TestResolveNewFileSlackFilenameNeutralized(t *testing.T) {

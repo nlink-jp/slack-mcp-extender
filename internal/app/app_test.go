@@ -137,7 +137,7 @@ func TestBuildProxyWithStoredTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildProxy: %v", err)
 	}
-	defer p.Upstream.Close()
+	defer func() { _ = p.Upstream.Close() }()
 	if p.TimeoutMs != config.DefaultTimeoutMs {
 		t.Errorf("TimeoutMs = %d", p.TimeoutMs)
 	}

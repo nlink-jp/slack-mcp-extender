@@ -56,9 +56,14 @@ func (a *AuditLog) Append(entry AuditEntry) error {
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)
 	}
-	defer f.Close()
 	if _, err := f.Write(append(data, '\n')); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("write audit log: %w", err)
+	}
+	// Checked, not deferred: this is the record that a file left the machine,
+	// and a close that fails can lose the line that was just written.
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close audit log: %w", err)
 	}
 	return nil
 }

@@ -72,7 +72,7 @@ func Login(cfg *config.Config, opts Options) error {
 	if oauthCfg.CallbackScheme == "https" {
 		cert, certErr := generateLoopbackCert()
 		if certErr != nil {
-			tcpListener.Close()
+			_ = tcpListener.Close()
 			return fmt.Errorf("generate self-signed cert for https callback: %w", certErr)
 		}
 		listener = tls.NewListener(tcpListener, &tls.Config{
@@ -87,14 +87,14 @@ func Login(cfg *config.Config, opts Options) error {
 	// PKCE + CSRF state.
 	verifier, err := randomToken(32)
 	if err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return fmt.Errorf("generate PKCE verifier: %w", err)
 	}
 	challengeSum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(challengeSum[:])
 	stateParam, err := randomToken(16)
 	if err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return fmt.Errorf("generate state: %w", err)
 	}
 
@@ -125,8 +125,10 @@ func Login(cfg *config.Config, opts Options) error {
 		fmt.Fprint(w, "<html><body><h2>Authorization successful</h2><p>You can close this window and return to the terminal.</p></body></html>")
 	})
 	server := &http.Server{Handler: mux}
-	go server.Serve(listener)
-	defer server.Close()
+	// Serve returns when the listener closes; what the caller needs travels
+	// on the channel below.
+	go func() { _ = server.Serve(listener) }()
+	defer func() { _ = server.Close() }()
 
 	// Authorization URL. Security-critical params are set last so nothing
 	// can override them.
@@ -188,7 +190,7 @@ func Login(cfg *config.Config, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("token exchange request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {

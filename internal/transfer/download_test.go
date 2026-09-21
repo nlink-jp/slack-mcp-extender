@@ -27,7 +27,7 @@ func fakeFilesAPI(t *testing.T, infoResponse string, fileBytes []byte, downloadS
 			t.Errorf("download missing Bearer token")
 		}
 		w.WriteHeader(downloadStatus)
-		w.Write(fileBytes)
+		_, _ = w.Write(fileBytes)
 	})
 	srv = httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

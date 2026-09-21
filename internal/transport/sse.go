@@ -72,14 +72,14 @@ func (t *sseClientTransport) Send(data []byte) error {
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized && t.auth != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.auth.Invalidate()
 		resp, err = t.doPost(data)
 		if err != nil {
 			return err
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return fmt.Errorf("HTTP 401: authentication failed after token refresh (run `slack-mcp-extender login` again)")
 		}
 	}
@@ -131,7 +131,7 @@ func (t *sseClientTransport) handleResponse(resp *http.Response) error {
 	switch {
 	case strings.HasPrefix(contentType, "application/json"):
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("read response body: %w", err)
 		}
@@ -142,7 +142,7 @@ func (t *sseClientTransport) handleResponse(resp *http.Response) error {
 
 	default:
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode >= 400 {
 			return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateBytes(body, 200))
 		}
@@ -191,7 +191,7 @@ func (t *sseClientTransport) Close() error {
 				}
 			}
 			if resp, err := t.client.Do(req); err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func (t *sseClientTransport) Close() error {
 
 // consumeSSEStream parses an SSE stream and queues each "message" event.
 func (t *sseClientTransport) consumeSSEStream(body io.ReadCloser) {
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)

@@ -157,9 +157,9 @@ func newHarness(t *testing.T, injected *InjectedTools, timeoutMs int) *harness {
 		close(h.outLine)
 	}()
 	t.Cleanup(func() {
-		inW.Close()
-		up.Close()
-		outW.Close()
+		_ = inW.Close()
+		_ = up.Close()
+		_ = outW.Close()
 	})
 	return h
 }

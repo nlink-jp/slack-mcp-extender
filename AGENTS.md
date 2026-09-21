@@ -67,6 +67,14 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
 
 ## Gotchas
 
+- **`make lint` is green, and every unchecked return says why.** `.golangci.yml`
+  excludes only `fmt.Fprint*` (writes to the CLI's own streams); every other
+  deliberate discard is `_ =` with the reason beside it. Two were not
+  deliberate: the audit log's `Close` was deferred and its error thrown away —
+  that record is the evidence a file left the machine, so it is checked now —
+  and the download's temp-file cleanup discarded silently. 37 findings stood
+  before 2026-09-21.
+
 - Slack user tokens are **workspace-scoped**: one config + one Claude Desktop
   MCP registration per workspace. No multiplexing in one process (tool-name
   collisions would break transparency).

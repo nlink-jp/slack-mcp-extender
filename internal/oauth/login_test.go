@@ -70,7 +70,7 @@ func driveCallback(t *testing.T, authURL string, override url.Values) {
 		t.Logf("callback GET (tolerated): %v", err)
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestLoginHappyPath(t *testing.T) {

@@ -49,6 +49,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The existing system-location, home-directory and credential checks are
   unchanged.
 
+### Fixed
+
+- **A failed write to the transfer audit log is now reported.** The log records
+  that a file left this machine; its close was deferred and its error discarded,
+  so a full disk could lose the line that had just been written.
+
 ## [0.3.2] - 2026-09-14
 
 ### Added

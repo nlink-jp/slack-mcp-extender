@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Writes to the CLI's own stdout/stderr. There is nothing to do with the
+      # error — reporting a failed write to the stream that just failed is
+      # circular, and the process exit code already carries the outcome.
+      #
+      # This is the ONLY errcheck exclusion, and the sibling tools carry the
+      # same one. Everything else stays on deliberately: this server writes the
+      # token store and the audit log, and an unchecked Close on either is a
+      # real defect class — `transfer.AuditLog` and the token store both fold
+      # their Close error into the returned one, which is why `Close` is not on
+      # this list. Every other unchecked return is written `_ =` at the call
+      # site with the reason beside it.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln

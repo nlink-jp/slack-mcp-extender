@@ -78,7 +78,7 @@ func (u *Client) FetchTo(info *FileInfo, target string, maxSize int64) (int64, e
 	if err != nil {
 		return 0, fmt.Errorf("download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return 0, fmt.Errorf("download: HTTP %d: %s", resp.StatusCode, truncate(body, 200))
@@ -90,8 +90,10 @@ func (u *Client) FetchTo(info *FileInfo, target string, maxSize int64) (int64, e
 	}
 	tmpPath := tmp.Name()
 	cleanup := func() {
-		tmp.Close()
-		os.Remove(tmpPath)
+		// The caller's error is the one that matters; a failure to tidy up
+		// after it adds nothing.
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 	}
 
 	reader := io.Reader(resp.Body)
@@ -108,15 +110,15 @@ func (u *Client) FetchTo(info *FileInfo, target string, maxSize int64) (int64, e
 		return 0, fmt.Errorf("%w (cap %d bytes)", ErrTooLarge, maxSize)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return 0, fmt.Errorf("close temp file: %w", err)
 	}
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return 0, fmt.Errorf("chmod: %w", err)
 	}
 	if err := os.Rename(tmpPath, target); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return 0, fmt.Errorf("finalize download: %w", err)
 	}
 	return written, nil

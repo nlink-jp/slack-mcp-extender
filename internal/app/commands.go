@@ -53,7 +53,8 @@ func runMCP(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
-	defer p.Upstream.Close()
+	// The proxy is finished with by then; a failed close has nobody to tell.
+	defer func() { _ = p.Upstream.Close() }()
 
 	logf("slack-mcp-extender: proxy started (upstream=%s, state=%s)\n",
 		cfg.Upstream.URL, cfg.StateDir)

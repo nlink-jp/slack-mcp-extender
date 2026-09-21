@@ -119,7 +119,14 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir` and the rest
   of `internal/proxy/sensitive_path_test.go` (home directory redirected with
   `t.Setenv`, never the operator's real one), plus the serverDirs mechanics in
-  `internal/containment`.
+  `internal/containment`. The **list** is held separately, in
+  `workdir.TestCredentialListHasNotDrifted` and
+  `TestDeniedPathRefusesEveryEntryOnTheCredentialList`: those scenario tests
+  exercise `.config/gcloud` and the state directory, so without a table over
+  the entries an entry dropped from `sensitiveHomeTrees` took no test with it.
+  The table states the expected list rather than iterating the implementation's
+  — iterating it means a deleted entry is simply not visited, which was
+  measured passing that mutation.
 - Hidden-component rejection applies to path components **below the work_dir**
   only (the work directory itself may live under a dot directory).
 - `.env` is on ADR-021 §7's list but is **not** in the credential floor here:

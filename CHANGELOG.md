@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **The credential floor's list is now held by a test, not only its scenario.**
+  The floor that refuses a credential file named inside an accepted work
+  directory (0.4.0) was pinned by the case it was built for —
+  `~/.config` with `gcloud/credentials.db` under it — plus this server's own
+  state directory. Every other entry of the list (`~/.ssh`, `~/.aws`,
+  `~/.gnupg`, `~/.config/{gem-agent,lagent}`, `~/.claude`, `~/.codex`,
+  `~/Library/Keychains`) was unexercised for a file, so one removed in passing
+  would have taken no test with it. A table now refuses a file under each, and
+  a second test holds the implementation's list to the expected one so an entry
+  added or dropped fails. No behaviour change: the floor itself is unchanged.
+
 ## [0.4.0] - 2026-09-21
 
 ### Security

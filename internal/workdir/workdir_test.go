@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -133,5 +135,98 @@ func TestValidateStillRefusesTheOriginalLocations(t *testing.T) {
 func TestResolveRequiresAWorkDirectory(t *testing.T) {
 	if _, err := Resolve("", nil, nil); code(t, err) != CodeRequired {
 		t.Errorf("Resolve(\"\") = %v, want %s", err, CodeRequired)
+	}
+}
+
+// --- the list itself, at the file level ------------------------------------
+//
+// DeniedPath is the floor applied to every path a call names inside an
+// accepted work directory (ADR-021 §7). The scenario it was built for —
+// work_dir = ~/.config with gcloud/credentials.db under it — is pinned at the
+// layer an agent reaches, in internal/proxy/sensitive_path_test.go. What was
+// not pinned anywhere is the *list*: only .config/gcloud and this server's own
+// state directory were ever exercised for a file, so an entry deleted from
+// sensitiveHomeTrees would have taken no test with it.
+//
+// The home directory is redirected: writing a fixture into the operator's real
+// ~/.ssh to prove a refusal would be the test damaging what it protects.
+
+// credentialTrees is the list this test holds the implementation to, written
+// out rather than read from sensitiveHomeTrees. Iterating the implementation's
+// own slice looked like a table over every entry and was not one: an entry
+// deleted from the slice simply stopped being visited, so dropping ".aws" or
+// "Library/Keychains" left the suite green. Measured, not assumed — that
+// version of this test passed both mutations.
+var credentialTrees = []string{
+	".ssh", ".aws", ".gnupg", ".config/gcloud", ".config/gem-agent",
+	".config/lagent", ".claude", ".codex", "Library/Keychains",
+}
+
+// TestCredentialListHasNotDrifted is the half that makes deletion fail: the
+// implementation's list must be exactly the list above. An entry added without
+// a refusal test, or removed in passing, stops here.
+func TestCredentialListHasNotDrifted(t *testing.T) {
+	got := append([]string(nil), sensitiveHomeTrees...)
+	want := append([]string(nil), credentialTrees...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if len(got) != len(want) {
+		t.Fatalf("sensitiveHomeTrees has %d entries, the test knows %d:\n  impl: %v\n  test: %v",
+			len(got), len(want), got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: impl %q, test %q — update credentialTrees and give the new tree a refusal case",
+				i, got[i], want[i])
+		}
+	}
+}
+
+// TestDeniedPathRefusesEveryEntryOnTheCredentialList gives each tree a file
+// under it, which is the upload case. A tree that does not exist yet is not
+// interesting: the floor compares paths and never stats them.
+func TestDeniedPathRefusesEveryEntryOnTheCredentialList(t *testing.T) {
+	home := realTempDir(t)
+	t.Setenv("HOME", home)
+
+	for _, rel := range credentialTrees {
+		t.Run(rel, func(t *testing.T) {
+			file := filepath.Join(home, rel, "secret")
+			if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte("credential"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			why := DeniedPath(file, file, nil)
+			if why == "" {
+				t.Errorf("DeniedPath(%q) allowed a file under ~/%s", file, rel)
+				return
+			}
+			// The reason has to name the tree, or an operator reading the
+			// refusal cannot tell which rule they hit.
+			if !strings.Contains(why, rel) {
+				t.Errorf("reason %q does not name ~/%s", why, rel)
+			}
+		})
+	}
+}
+
+// The must-pass row. A floor that refused everything under the home directory
+// would satisfy every assertion above while breaking ordinary use — and the
+// work directory a caller passes is routinely somewhere under $HOME.
+func TestDeniedPathLeavesAnOrdinaryHomePathAlone(t *testing.T) {
+	home := realTempDir(t)
+	t.Setenv("HOME", home)
+
+	file := filepath.Join(home, "work", "report.txt")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("nothing secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if why := DeniedPath(file, file, nil); why != "" {
+		t.Errorf("DeniedPath(%q) refused an ordinary file: %s", file, why)
 	}
 }

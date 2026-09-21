@@ -12,8 +12,9 @@ external upload 3-step (`files.getUploadURLExternal` → POST →
 `files.completeUploadExternal`) under the **same user token** the proxy holds
 (single OAuth session; app shared with scli; user scope `files:write`).
 File access is confined to the `work_dir` each call names (ADR-0003)
-(canonicalized containment, deny-by-default, hidden-component rejection,
-size cap) because the tool is otherwise an exfiltration primitive.
+(canonicalized containment, deny-by-default, credential floor,
+hidden-component rejection, size cap) because the tool is otherwise an
+exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
 full new build with no governance machinery. Zero external dependencies.
 
@@ -49,7 +50,7 @@ Module path: `github.com/nlink-jp/slack-mcp-extender`.
 main.go                  package main; version via -ldflags; calls app.Run
 internal/app/            CLI dispatch + command wiring (buildProxy)
 internal/jsonrpc/        JSON-RPC types + raw-preserving tools/list merge
-internal/containment/    path policy (5-stage canonical checks) — the
+internal/containment/    path policy (6-stage canonical checks) — the
                          highest-priority test suite in the repo
 internal/config/         per-workspace JSON config (strict decode, 0600)
 internal/transport/      Streamable HTTP/SSE client + token store/refresh
@@ -92,8 +93,32 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   `proxy.TestWorkDirRefusesServerStateDir` (the tools pass the list) and
   `app.TestBuildProxyDeclaresTheServersOwnDirs` (the assembled server fills
   it).
+- **The credential list runs twice: on `work_dir`, and on every path a call
+  names inside it.** ADR-021 §7 calls the list a floor, not a boundary, and a
+  floor applied only to the directory argument is stepped over by naming the
+  directory one level above a credential one — `~/.config` is not itself a
+  denied tree, so it passed `workdir.Validate`, and `gcloud/credentials.db`
+  under it reached `ext_file_upload` unexamined. The same holds for
+  `~/Library` above `Library/Keychains`, and for the parent of the state
+  directory above `tokens.json`. `workdir.DeniedPath` exports the one list
+  (do not grow a second one) and the containment policy applies it as stage 2
+  of `Resolve` — ahead of containment, so the refusal names the credential
+  rather than the root it escaped — and to the joined target in
+  `ResolveNewFile`, so a download cannot write into one either. Reason code:
+  `sensitive_path`. Two of the cases are only reachable through this stage:
+  a symlink whose target is sensitive but still inside the work_dir, and a
+  destination path inside an accepted work_dir. Tests:
+  `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir` and the rest
+  of `internal/proxy/sensitive_path_test.go` (home directory redirected with
+  `t.Setenv`, never the operator's real one), plus the serverDirs mechanics in
+  `internal/containment`.
 - Hidden-component rejection applies to path components **below the work_dir**
   only (the work directory itself may live under a dot directory).
+- `.env` is on ADR-021 §7's list but is **not** in the credential floor here:
+  reads are confined to the work_dir, and a `.env` below it is already
+  refused by the hidden-component stage. Adding it to the floor would
+  override `allow_hidden`, which is the operator's explicit opt-out — a
+  decision to make deliberately, not as a side effect.
 - The OAuth requested scopes must include `files:write`; adding it requires
   one re-consent per workspace, and token rotation can affect scli (shared
   app) if token stores are separate.

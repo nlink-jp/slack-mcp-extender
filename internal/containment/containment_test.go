@@ -32,7 +32,14 @@ func writeFile(t *testing.T, path, content string) {
 
 func mustPolicy(t *testing.T, roots []string, allowHidden bool, maxSize int64) *Policy {
 	t.Helper()
-	p, err := NewPolicy(roots, allowHidden, maxSize)
+	return mustPolicyWithServerDirs(t, roots, nil, allowHidden, maxSize)
+}
+
+// mustPolicyWithServerDirs is mustPolicy for the cases that care about the
+// credential floor's serverDirs entries.
+func mustPolicyWithServerDirs(t *testing.T, roots, serverDirs []string, allowHidden bool, maxSize int64) *Policy {
+	t.Helper()
+	p, err := NewPolicy(roots, serverDirs, allowHidden, maxSize)
 	if err != nil {
 		t.Fatalf("NewPolicy: %v", err)
 	}
@@ -265,16 +272,16 @@ func TestMultipleRootsSecondMatches(t *testing.T) {
 }
 
 func TestNewPolicyValidation(t *testing.T) {
-	if _, err := NewPolicy([]string{"relative/root"}, false, 0); err == nil {
+	if _, err := NewPolicy([]string{"relative/root"}, nil, false, 0); err == nil {
 		t.Error("relative root accepted")
 	}
-	if _, err := NewPolicy([]string{filepath.Join(canonTemp(t), "missing")}, false, 0); err == nil {
+	if _, err := NewPolicy([]string{filepath.Join(canonTemp(t), "missing")}, nil, false, 0); err == nil {
 		t.Error("nonexistent root accepted")
 	}
 	root := canonTemp(t)
 	file := filepath.Join(root, "afile")
 	writeFile(t, file, "x")
-	if _, err := NewPolicy([]string{file}, false, 0); err == nil {
+	if _, err := NewPolicy([]string{file}, nil, false, 0); err == nil {
 		t.Error("file (non-directory) root accepted")
 	}
 }
@@ -420,3 +427,105 @@ func TestViolationErrorAndRootsExposed(t *testing.T) {
 		t.Errorf("Error() = %q", v.Error())
 	}
 }
+
+// --- the credential floor (stage 2) ---
+//
+// The layer these tests observe is the policy kernel: the floor is applied by
+// Resolve/ResolveNewFile themselves, so a tool added later cannot reach a file
+// without passing it. What the injected tools do with it — that they hand the
+// policy the server's own directories, and that a refusal reaches the caller
+// naming the path — is pinned a layer up, in internal/proxy.
+//
+// Only the serverDirs entries are exercised here: the rest of the list is
+// home-relative, and a test that means "~/.ssh" has to own the home directory
+// it is talking about. Those cases live in internal/proxy, where the home
+// directory is redirected.
+
+// serverDirFixture returns a root with the server's own state directory inside
+// it — work_dir naming the parent is accepted, which is what makes the file
+// below it reachable at all.
+func serverDirFixture(t *testing.T) (root, stateDir string) {
+	t.Helper()
+	root = canonTemp(t)
+	stateDir = filepath.Join(root, "ws.state")
+	writeFile(t, filepath.Join(stateDir, "tokens.json"), `{"access_token":"canary"}`)
+	return root, stateDir
+}
+
+func TestResolveRefusesAFileInsideAServerOwnedDirectory(t *testing.T) {
+	root, stateDir := serverDirFixture(t)
+	p := mustPolicyWithServerDirs(t, []string{root}, []string{stateDir}, false, 0)
+
+	tokens := filepath.Join(stateDir, "tokens.json")
+	v := wantViolation(t, mustFail(p.Resolve("", tokens)), ReasonSensitivePath)
+	if !strings.Contains(v.Detail, tokens) {
+		t.Errorf("detail = %q, want it to name %q", v.Detail, tokens)
+	}
+	// The same file named relative to the work directory, which is the
+	// spelling a caller would actually use.
+	rel := wantViolation(t, mustFail(p.Resolve(root, filepath.Join("ws.state", "tokens.json"))), ReasonSensitivePath)
+	if !strings.Contains(rel.Detail, tokens) {
+		t.Errorf("relative spelling: detail = %q, want it to name %q", rel.Detail, tokens)
+	}
+}
+
+// A link is the obvious way past a check that only looks at the path as
+// spelled: the name is innocuous and the target is not.
+func TestResolveRefusesASymlinkToAServerOwnedFile(t *testing.T) {
+	root, stateDir := serverDirFixture(t)
+	link := filepath.Join(root, "notes.txt")
+	if err := os.Symlink(filepath.Join(stateDir, "tokens.json"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	p := mustPolicyWithServerDirs(t, []string{root}, []string{stateDir}, false, 0)
+	v := wantViolation(t, mustFail(p.Resolve("", link)), ReasonSensitivePath)
+	if v.Path != filepath.Join(stateDir, "tokens.json") {
+		t.Errorf("violation path = %q, want the resolved target", v.Path)
+	}
+}
+
+func TestResolveNewFileRefusesAServerOwnedDestination(t *testing.T) {
+	root, stateDir := serverDirFixture(t)
+	p := mustPolicyWithServerDirs(t, []string{root}, []string{stateDir}, false, 0)
+
+	_, err := p.ResolveNewFile("", stateDir, "planted.json")
+	v := wantViolation(t, err, ReasonSensitivePath)
+	if want := filepath.Join(stateDir, "planted.json"); !strings.Contains(v.Detail, want) {
+		t.Errorf("detail = %q, want it to name %q", v.Detail, want)
+	}
+}
+
+// The control: the floor must refuse credential locations, not files in
+// general. Without this a check that returned a violation unconditionally
+// would pass every test above.
+func TestFloorLeavesOrdinaryFilesAloneWithServerDirsDeclared(t *testing.T) {
+	root, stateDir := serverDirFixture(t)
+	p := mustPolicyWithServerDirs(t, []string{root}, []string{stateDir}, false, 0)
+
+	ordinary := filepath.Join(root, "exchange", "report.csv")
+	writeFile(t, ordinary, "a,b\n")
+	got, err := p.Resolve("", ordinary)
+	if err != nil {
+		t.Fatalf("ordinary file refused: %v", err)
+	}
+	if got != ordinary {
+		t.Errorf("canonical = %q, want %q", got, ordinary)
+	}
+
+	// A sibling whose name merely starts with the denied directory's name is
+	// not under it: "<root>/ws.state-export" is not "<root>/ws.state".
+	sibling := filepath.Join(root, "ws.state-export", "summary.txt")
+	writeFile(t, sibling, "x")
+	if _, err := p.Resolve("", sibling); err != nil {
+		t.Errorf("sibling of a server directory refused: %v", err)
+	}
+
+	if _, err := p.ResolveNewFile("", root, "incoming.bin"); err != nil {
+		t.Errorf("ordinary destination refused: %v", err)
+	}
+}
+
+// mustFail keeps the (path, error) pairs above readable; the path is never
+// wanted on a refusal.
+func mustFail(_ string, err error) error { return err }

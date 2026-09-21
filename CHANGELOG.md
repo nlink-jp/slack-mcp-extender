@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **The credential denial list is now applied to the file a call names, not
+  only to the `work_dir` it was resolved under.** ADR-021 §7 states the list
+  is "a floor, not a boundary", and a floor tested only against the directory
+  argument is stepped over by naming the directory one level above a
+  credential one: `~/.config` is not itself a denied tree, so it was accepted
+  as a work directory, and `ext_file_upload` would then post
+  `gcloud/credentials.db` under it to a Slack channel. The same shape covered
+  `~/Library` above `Library/Keychains`, and the parent of the state
+  directory above `tokens.json` — the work_dir check refuses the state
+  directory, but not its parent. `workdir.DeniedPath` exports the one list and
+  `containment.Policy` applies it as stage 2 of `Resolve`, ahead of
+  containment so the refusal names the credential rather than the root it
+  escaped, and to the joined target in `ResolveNewFile` so a caller-named
+  download destination cannot land on a sensitive path either. Symlinks are
+  resolved before the comparison and both spellings are checked, so a link in
+  an innocuous directory cannot stand in for its target — including a link
+  whose target stays *inside* the work_dir, which containment cannot see at
+  all. Refusals are the existing structured `path_denied` error with
+  `reason: sensitive_path`, they name the path, and they are audited. The
+  `work_dir` validation itself is unchanged: this is an additional check at
+  the point of use, not a replacement.
 - **`work_dir` may no longer be this server's own config or state
   directory.** Organization ADR-021 §4 closes the work-directory checks with
   "not a system location … and not the server's own config or state

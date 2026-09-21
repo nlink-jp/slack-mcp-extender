@@ -146,6 +146,28 @@ func Validate(dir string, serverDirs []string) (string, error) {
 	return resolved, nil
 }
 
+// DeniedPath reports why a path lies in a location this server must never read
+// from or write to, or "" when it does not. raw is the path as the caller
+// spelled it and resolved is its symlink-resolved form; pass the same value
+// twice for a path that does not exist yet, such as a download target.
+//
+// It applies the same closed list Validate applies to the work directory, at
+// the other end of the call. That list is deliberately a floor and not a
+// boundary — organization ADR-021 §7: "The blacklist is a floor, not a
+// boundary. The next secret file is not on it." — and a floor tested only
+// against the directory argument is not even a floor: `~/.config` is not
+// itself a denied tree, so it is accepted as a work directory, and a call
+// naming `gcloud/credentials.db` under it was never looked at. The same holds
+// for `~/Library` above `Library/Keychains`, and for the parent of this
+// server's own state directory above `tokens.json`.
+//
+// Containment in the work directory remains the boundary and is enforced
+// separately (internal/containment); this is the floor underneath it, and
+// neither stands in for the other.
+func DeniedPath(raw, resolved string, serverDirs []string) string {
+	return denied(raw, resolved, serverDirs)
+}
+
 // denied reports why the path may not be a work directory, or "".
 //
 // Both spellings are checked — as given and symlink-resolved — against both

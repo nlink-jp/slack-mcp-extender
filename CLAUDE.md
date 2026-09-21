@@ -20,9 +20,16 @@ workspace CLAUDE.md) apply on top of these.
   a download lands inside it, and nothing outside it can be reached. Never
   widen it from Slack-derived values, and never add a second source of roots.
 - **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),
-  then: containment in the work_dir → regular-file-only → hidden-component
-  rejection (relative to the work_dir) → size cap. Do not reorder checks to run
-  on raw input strings.
+  then: credential floor → containment in the work_dir → regular-file-only →
+  hidden-component rejection (relative to the work_dir) → size cap. Do not
+  reorder checks to run on raw input strings.
+- **The credential floor is applied to the file, not only to the work_dir**
+  (ADR-021 §7 — the list is a floor, not a boundary). `workdir.DeniedPath` is
+  the single list; `containment.Policy` consults it for the resolved upload
+  source and for the joined download target. An accepted work directory does
+  not make its contents safe to send: never let a new tool reach a path
+  without going through `Policy.Resolve` / `Policy.ResolveNewFile`, and never
+  introduce a second copy of the list.
 - **Zero external Go dependencies** — standard library only.
 - **swrite stays untouched**: bot-identity uploads belong to swrite, not here.
 

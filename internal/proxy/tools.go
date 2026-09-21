@@ -37,7 +37,9 @@ type InjectedTools struct {
 	MaxFileSize int64
 	// ServerDirs are this server's own config and state directories, refused
 	// as a work directory along with everything under them (organization
-	// ADR-021 §4). They come from the loaded config
+	// ADR-021 §4) and, since they are also handed to the containment policy,
+	// as the location of any file a call names inside an accepted work
+	// directory (§7's floor). They come from the loaded config
 	// (config.Config.ServerOwnedDirs), because the state directory is
 	// per-workspace and only the config knows where it is.
 	ServerDirs []string
@@ -59,6 +61,14 @@ type InjectedTools struct {
 // This is the only place a work directory is resolved, so it is the only
 // place the server's own directories have to be refused — a tool added later
 // reaches a validated directory or a refusal, never a raw argument.
+//
+// The same denial list goes on to the policy, because an accepted work
+// directory does not make its contents safe to send: `~/.config` is not
+// itself a denied tree, so it passes as a work directory, and the file the
+// call names under it is checked by the policy's credential floor rather than
+// by this resolution (organization ADR-021 §7 — the list is a floor, not a
+// boundary). Containment and the floor are both enforced, neither replaces
+// the other.
 func (it *InjectedTools) policyFor(arg string, meta map[string]json.RawMessage) (string, *containment.Policy, *jsonrpc.ToolResult) {
 	dir, err := workdir.Resolve(arg, meta, it.ServerDirs)
 	if err != nil {
@@ -68,7 +78,7 @@ func (it *InjectedTools) policyFor(arg string, meta map[string]json.RawMessage) 
 		}
 		return "", nil, errorResult("internal_error", err.Error(), nil)
 	}
-	policy, perr := containment.NewPolicy([]string{dir}, it.AllowHidden, it.MaxFileSize)
+	policy, perr := containment.NewPolicy([]string{dir}, it.ServerDirs, it.AllowHidden, it.MaxFileSize)
 	if perr != nil {
 		return "", nil, errorResult("internal_error", perr.Error(), nil)
 	}

@@ -14,15 +14,27 @@
 //
 //  1. canonicalize   Abs + Clean + EvalSymlinks — all later checks run on
 //     the real path, so `..` tricks and symlink disguises are resolved away
-//  2. containment    the canonical path must be under one allowed root
+//  2. credential floor  the real path may not lie in a credential or
+//     agent-control location, nor in this server's own directories
+//     (internal/workdir's list, organization ADR-021 §7). It runs on the
+//     file the call names, because an accepted work directory does not make
+//     its contents safe to send: the list is a floor, and a floor applied
+//     only to the directory argument is stepped over by naming a file under
+//     an accepted parent
+//  3. containment    the canonical path must be under one allowed root
 //     (deny-by-default: no roots configured → nothing is allowed)
-//  3. regular file   directories, devices, sockets, and anything else that
+//  4. regular file   directories, devices, sockets, and anything else that
 //     is not a plain file are rejected
-//  4. hidden check   no path component below the matched root may start
+//  5. hidden check   no path component below the matched root may start
 //     with "." (`.git`, `.env`, `.ssh`, …) unless allow_hidden is set; the
 //     root itself may live under a dot directory — that prefix was
 //     explicitly operator-approved
-//  5. size cap       the file must not exceed the configured maximum
+//  6. size cap       the file must not exceed the configured maximum
+//
+// Stages 2 and 3 are independent and both are load-bearing. Containment
+// answers "did the caller designate this?"; the floor answers "may this
+// server touch it at all?". A credential file inside a designated directory
+// passes the first and must still fail the second.
 package containment
 
 import (
@@ -30,6 +42,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nlink-jp/slack-mcp-extender/internal/workdir"
 )
 
 // Violation reason codes, carried in Violation.Reason and surfaced to the
@@ -40,6 +54,7 @@ const (
 	ReasonNotFound        = "not_found"
 	ReasonOutsideRoots    = "outside_allowed_roots"
 	ReasonNotRegularFile  = "not_regular_file"
+	ReasonSensitivePath   = "sensitive_path"
 	ReasonHiddenComponent = "hidden_component"
 	ReasonTooLarge        = "too_large"
 	ReasonAlreadyExists   = "already_exists"
@@ -63,6 +78,7 @@ func (v *Violation) Error() string {
 // NewPolicy so the roots are canonicalized once, up front.
 type Policy struct {
 	roots       []string // canonical (EvalSymlinks-resolved) allowed roots
+	serverDirs  []string // this server's own config and state directories
 	allowHidden bool
 	maxSize     int64 // bytes; <= 0 means no cap
 }
@@ -71,7 +87,15 @@ type Policy struct {
 // must exist and be a directory: a root that cannot be canonicalized cannot
 // be enforced, so it is a configuration error, not a silent skip.
 // An empty roots list is valid and yields a deny-everything policy.
-func NewPolicy(roots []string, allowHidden bool, maxSize int64) (*Policy, error) {
+//
+// serverDirs are this server's own config and state directories, refused as a
+// file location along with everything under them: the state directory holds
+// tokens.json, and an upload leaves the machine. They are a constructor
+// parameter for the same reason workdir.Resolve takes them rather than reading
+// a package variable — a variable has an initialization order, and a call that
+// arrived before it was set would look exactly like a call that was allowed. A
+// caller with nothing to deny passes nil, and has to say so.
+func NewPolicy(roots, serverDirs []string, allowHidden bool, maxSize int64) (*Policy, error) {
 	canonical := make([]string, 0, len(roots))
 	for _, root := range roots {
 		if !filepath.IsAbs(root) {
@@ -90,7 +114,33 @@ func NewPolicy(roots []string, allowHidden bool, maxSize int64) (*Policy, error)
 		}
 		canonical = append(canonical, resolved)
 	}
-	return &Policy{roots: canonical, allowHidden: allowHidden, maxSize: maxSize}, nil
+	return &Policy{
+		roots:       canonical,
+		serverDirs:  serverDirs,
+		allowHidden: allowHidden,
+		maxSize:     maxSize,
+	}, nil
+}
+
+// sensitive builds the stage-2 refusal for a path on the credential floor, or
+// returns nil. raw is the caller's spelling and resolved the real path; both
+// are compared against both spellings of every list entry, because a
+// blacklisted directory may itself be a symlink and comparing one spelling
+// only walks past the list (organization ADR-021 §7).
+//
+// The wording of the reason comes from internal/workdir, so a caller reads the
+// same sentence whether the refused path arrived as work_dir or as file.
+func (p *Policy) sensitive(raw, resolved string) *Violation {
+	why := workdir.DeniedPath(raw, resolved, p.serverDirs)
+	if why == "" {
+		return nil
+	}
+	return &Violation{
+		Reason: ReasonSensitivePath,
+		Path:   resolved,
+		Roots:  p.Roots(),
+		Detail: fmt.Sprintf("%q is refused: %s", resolved, why),
+	}
 }
 
 // Roots returns the canonical allowed roots (for error details and logs).
@@ -147,7 +197,18 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		}
 	}
 
-	// Stage 2: containment under one allowed root.
+	// Stage 2: the credential floor, on the real path. It runs before
+	// containment so the refusal names the actual problem — a link out of the
+	// work directory into ~/.ssh is refused as a credential file, not merely
+	// as an uncontained one — and because the floor does not depend on
+	// containment to hold: the hole this stage closes was a work directory
+	// that containment accepted, `~/.config`, with `gcloud/credentials.db`
+	// named under it.
+	if v := p.sensitive(raw, canonical); v != nil {
+		return "", v
+	}
+
+	// Stage 3: containment under one allowed root.
 	matchedRoot := ""
 	for _, root := range p.roots {
 		if rel, err := filepath.Rel(root, canonical); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "." {
@@ -164,7 +225,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		}
 	}
 
-	// Stage 3: regular file only.
+	// Stage 4: regular file only.
 	fi, err := os.Stat(canonical)
 	if err != nil {
 		return "", &Violation{
@@ -183,7 +244,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		}
 	}
 
-	// Stage 4: hidden components below the matched root. The prefix up to
+	// Stage 5: hidden components below the matched root. The prefix up to
 	// the root was operator-approved; only the part below it is checked.
 	if !p.allowHidden {
 		rel, _ := filepath.Rel(matchedRoot, canonical)
@@ -199,7 +260,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		}
 	}
 
-	// Stage 5: size cap.
+	// Stage 6: size cap.
 	if p.maxSize > 0 && fi.Size() > p.maxSize {
 		return "", &Violation{
 			Reason: ReasonTooLarge,
@@ -318,6 +379,17 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 	}
 
 	target := filepath.Join(canonicalDir, base)
+
+	// The credential floor on the write side. A destination inside a work
+	// directory the caller legitimately named can still be a credential or
+	// agent-control location — `work_dir = ~/.config` with `dest_dir =
+	// gem-agent` — and a file this server drops there is a file something
+	// else later reads as its own configuration. canonicalDir is already
+	// symlink-resolved and base is a single sanitized component, so the
+	// target needs no second spelling.
+	if v := p.sensitive(target, target); v != nil {
+		return "", v
+	}
 
 	// Hidden components below the matched root, including the new basename.
 	if !p.allowHidden {

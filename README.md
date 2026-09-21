@@ -52,6 +52,23 @@ agent names on every call**:
   upload leaves the machine), and it is the **only** root — never widened
   from Slack-derived values
 
+**The credential list is also applied to the file, not only to the
+directory.** That list (`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.gnupg`,
+`~/Library/Keychains`, `~/.claude`, `~/.codex`,
+`~/.config/{gem-agent,lagent}`, this server's own directories) is a floor
+rather than a boundary, and a floor tested only against `work_dir` is stepped
+over by naming the directory just above a credential one: `~/.config` is not
+itself on the list, so it passed as a work directory, and a call naming
+`gcloud/credentials.db` under it was never looked at. Every caller-named path
+is now checked against the same list at the point of use, with symlinks
+resolved first so an innocuous-looking link cannot stand in for its target,
+and in both directions: an upload whose real path lands in one of those
+locations is refused, and so is a download destination that would write into
+one. The refusal is a structured `path_denied` error with
+`reason: sensitive_path` naming the path, it is written to the audit log like
+any other denial, and ordinary files inside an ordinary work_dir are
+unaffected.
+
 ## Installation
 
 Download the latest binary for your platform from

@@ -49,6 +49,20 @@ chatops-series の他ツール（swrite, stail, slack-router）は bot 認証で
   `tokens.json` があり、upload はファイルをマシン外へ出すため）。
   検証を通ったそれが**唯一の root** で、Slack 由来の値で広げることはしない
 
+**資格情報リストは、ディレクトリだけでなくファイルにも適用します。**
+このリスト（`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.gnupg`,
+`~/Library/Keychains`, `~/.claude`, `~/.codex`,
+`~/.config/{gem-agent,lagent}`、およびこのサーバー自身のディレクトリ）は
+境界ではなく「床」であり、`work_dir` だけに当てる床は、資格情報ディレクトリの
+一つ上を名指しすれば踏み越えられます —— `~/.config` 自体はリストに無いので
+work_dir として通り、その配下の `gcloud/credentials.db` は誰も見ていませんでした。
+現在は、呼び出し側が名指ししたパスを使用時点で同じリストに照合します。照合前に
+symlink を解決するので、無害に見えるリンクで対象を差し替えることもできません。
+方向は両方とも対象で、実体が上記の位置に落ちる upload は拒否し、そこへ書き込む
+download の保存先も拒否します。拒否は構造化 `path_denied` エラー
+（`reason: sensitive_path`）でパス名を含み、他の拒否と同様に監査ログへ記録します。
+通常の work_dir 内の通常のファイルには影響しません。
+
 ## インストール
 
 [Releases](https://github.com/nlink-jp/slack-mcp-extender/releases) から

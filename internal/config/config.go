@@ -253,11 +253,20 @@ func (c *Config) Validate() error {
 //   - DefaultConfigDir, where bare `--config <name>` resolves, so the other
 //     workspaces' configs are covered too and not just this one's.
 //
-// Empty entries are dropped; duplicates are harmless and left in.
+// Empty entries are dropped; duplicates are harmless and left in. Every entry
+// is made absolute the way the process uses it — a relative state_dir or
+// $HOME names a directory under the working directory — because pathguard
+// refuses every call for a place without an absolute path rather than
+// protect nothing.
 func (c *Config) ServerOwnedDirs() []string {
 	var dirs []string
+	add := func(d string) {
+		if abs, err := filepath.Abs(d); err == nil {
+			dirs = append(dirs, abs)
+		}
+	}
 	if c.StateDir != "" {
-		dirs = append(dirs, c.StateDir)
+		add(c.StateDir)
 	}
 	if c.Path != "" {
 		if abs, err := filepath.Abs(c.Path); err == nil {
@@ -265,7 +274,7 @@ func (c *Config) ServerOwnedDirs() []string {
 		}
 	}
 	if dir, err := DefaultConfigDir(); err == nil && dir != "" {
-		dirs = append(dirs, dir)
+		add(dir)
 	}
 	return dirs
 }

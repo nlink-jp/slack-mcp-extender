@@ -314,11 +314,15 @@ func (it *InjectedTools) pathDenied(tool string, err error, channelID, threadTS 
 		Tool: tool, Path: v.Path, ChannelID: channelID, ThreadTS: threadTS,
 		Outcome: "denied", Error: v.Reason,
 	})
-	return errorResult("path_denied", v.Error(), map[string]any{
+	details := map[string]any{
 		"reason":   v.Reason,
 		"path":     v.Path,
 		"work_dir": v.Roots,
-	})
+	}
+	if v.Floor != "" {
+		details["floor_reason"] = v.Floor
+	}
+	return errorResult("path_denied", v.Error(), details)
 }
 
 func (it *InjectedTools) audit(entry transfer.AuditEntry) {

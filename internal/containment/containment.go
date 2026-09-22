@@ -10,26 +10,39 @@
 // the hidden opt-out and the size cap. Every other tool argument is untrusted
 // input that must resolve inside the policy; none of them widens it.
 //
-// Check order (do not reorder; each stage assumes the previous ones):
+// Check order of Resolve, the upload source (do not reorder; each stage
+// assumes the previous ones):
 //
 //  1. canonicalize   Abs + Clean + EvalSymlinks — all later checks run on
-//     the real path, so `..` tricks and symlink disguises are resolved away
-//  2. credential floor  the real path may not lie in a credential or
-//     agent-control location, nor in this server's own directories
-//     (internal/workdir's list, organization ADR-021 §7). It runs on the
-//     file the call names, because an accepted work directory does not make
-//     its contents safe to send: the list is a floor, and a floor applied
-//     only to the directory argument is stepped over by naming a file under
-//     an accepted parent
+//     the real path, so `..` tricks and symlink disguises are resolved away.
+//     A path that does not resolve is still put to the floor first, so a
+//     missing credential file is refused, not reported missing
+//  2. credential floor  the path, as named and resolved, may not lie in a
+//     credential or agent-control location, nor in this server's own
+//     directories — nlink-jp/pathguard's judgement (ADR-0004, organization
+//     ADR-021 §7), its Outbound policy, since an upload leaves the machine.
+//     It runs on the file the call names, because an accepted work directory
+//     does not make its contents safe to send: the list is a floor, and a
+//     floor applied only to the directory argument is stepped over by naming
+//     a file under an accepted parent
 //  3. containment    the canonical path must be under one allowed root
-//     (deny-by-default: no roots configured → nothing is allowed)
+//     (deny-by-default: no roots configured → nothing is allowed); then the
+//     directory the file lies in may not be one no work directory may be (a
+//     system tree, which the file policies leave out)
 //  4. regular file   directories, devices, sockets, and anything else that
 //     is not a plain file are rejected
 //  5. hidden check   no path component below the matched root may start
-//     with "." (`.git`, `.env`, `.ssh`, …) unless allow_hidden is set; the
-//     root itself may live under a dot directory — that prefix was
-//     explicitly operator-approved
+//     with "." (`.git`, `.cache`, …) unless allow_hidden is set; the root
+//     itself may live under a dot directory — that prefix was explicitly
+//     operator-approved. `.env` and `.ssh` never get this far: the floor
+//     refused them
 //  6. size cap       the file must not exceed the configured maximum
+//
+// ResolveNewFile, the download target, resolves the destination directory,
+// checks containment, then the floor (pathguard's Local policy, the target
+// as named and resolved; on the name alone when the directory does not
+// resolve) and the system-tree check on the directory, then the hidden rule
+// and that nothing is there yet.
 //
 // Stages 2 and 3 are independent and both are load-bearing. Containment
 // answers "did the caller designate this?"; the floor answers "may this
@@ -68,6 +81,11 @@ type Violation struct {
 	Path   string   // the offending path as resolved so far
 	Roots  []string // the canonical allowed roots (for the error details)
 	Detail string   // human-readable specifics
+	// Floor is pathguard's reason for a ReasonSensitivePath refusal
+	// (sensitive_path, server_dir, system_dir, unresolvable_path,
+	// home_unknown, unconfigured) — the same vocabulary work_dir_denied
+	// carries — and empty for every other reason.
+	Floor string
 }
 
 func (v *Violation) Error() string {
@@ -129,10 +147,11 @@ func NewPolicy(roots, serverDirs []string, allowHidden bool, maxSize int64) (*Po
 // one written here (the Local policy). Both compare by file identity and by
 // folded name, links followed (organization ADR-021 §7).
 //
-// The wording of the reason comes from internal/workdir, so a caller reads the
-// same sentence whether the refused path arrived as work_dir or as file.
-func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string, serverDirs []string) string) *Violation {
-	why := deny(raw, resolved, p.serverDirs)
+// The wording and the reason come from pathguard, so a caller reads the same
+// sentence and reason whether the refused path arrived as work_dir or as
+// file.
+func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string, serverDirs []string) (string, string)) *Violation {
+	reason, why := deny(raw, resolved, p.serverDirs)
 	if why == "" {
 		return nil
 	}
@@ -141,6 +160,24 @@ func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string,
 		Path:   resolved,
 		Roots:  p.Roots(),
 		Detail: fmt.Sprintf("%q is refused: %s", resolved, why),
+		Floor:  reason,
+	}
+}
+
+// deniedDir builds the refusal for a file whose directory, beneath the work
+// directory, is one no work directory may be (workdir.DirDenied: a system
+// tree), or returns nil.
+func (p *Policy) deniedDir(dir, path string) *Violation {
+	reason, why := workdir.DirDenied(dir, p.serverDirs)
+	if why == "" {
+		return nil
+	}
+	return &Violation{
+		Reason: ReasonSensitivePath,
+		Path:   path,
+		Roots:  p.Roots(),
+		Detail: why,
+		Floor:  reason,
 	}
 }
 
@@ -188,8 +225,15 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 
 	// Stage 1: canonicalize. EvalSymlinks requires the path to exist —
 	// an upload source must exist anyway, so absence is a violation here.
+	// A path the floor refuses is refused as such even when it does not
+	// resolve (pathguard follows the links itself and needs no existing
+	// file): "not found" versus "refused" would tell the caller which
+	// credential files exist.
 	canonical, err := filepath.EvalSymlinks(filepath.Clean(raw))
 	if err != nil {
+		if v := p.sensitive(filepath.Clean(raw), filepath.Clean(raw), workdir.UploadDenied); v != nil {
+			return "", v
+		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
 			Path:   raw,
@@ -224,6 +268,11 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 			Roots:  p.Roots(),
 			Detail: fmt.Sprintf("%q resolves outside every allowed root", raw),
 		}
+	}
+	// The directory the file lies in, beneath the work directory, may not be
+	// one no work directory may be (a system tree).
+	if v := p.deniedDir(filepath.Dir(canonical), canonical); v != nil {
+		return "", v
 	}
 
 	// Stage 4: regular file only.
@@ -342,10 +391,19 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 		raw = filepath.Join(workDir, raw)
 	}
 
+	// The target as named: the floor judges it together with the resolved
+	// one below, so a chain of links through a credential directory is seen,
+	// and alone when the directory does not resolve, so a missing directory
+	// is not told apart from a refused one.
+	named := filepath.Join(filepath.Clean(raw), base)
+
 	// The parent directory must exist so it can be canonicalized — all
 	// later checks run on the real path.
 	canonicalDir, err := filepath.EvalSymlinks(filepath.Clean(raw))
 	if err != nil {
+		if v := p.sensitive(named, named, workdir.DownloadDenied); v != nil {
+			return "", v
+		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
 			Path:   raw,
@@ -386,9 +444,14 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 	// agent-control location — `work_dir = ~/.config` with `dest_dir =
 	// gem-agent` — and a file this server drops there is a file something
 	// else later reads as its own configuration. canonicalDir is already
-	// symlink-resolved and base is a single sanitized component, so the
-	// target needs no second spelling.
-	if v := p.sensitive(target, target, workdir.DownloadDenied); v != nil {
+	// symlink-resolved and base is a single sanitized component; the target
+	// as named goes too, for the links on the way.
+	if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
+		return "", v
+	}
+	// And the directory it lands in may not be one no work directory may be
+	// (a system tree), which the Local policy leaves out.
+	if v := p.deniedDir(canonicalDir, target); v != nil {
 		return "", v
 	}
 

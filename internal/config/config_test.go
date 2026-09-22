@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nlink-jp/slack-mcp-extender/internal/workdir"
 )
 
 // validBody is a minimal valid config document.
@@ -227,5 +229,30 @@ func TestRedacted(t *testing.T) {
 	empty := (&Config{}).Redacted()
 	if empty.OAuth.ClientSecret != "" {
 		t.Errorf("empty secret became %q", empty.OAuth.ClientSecret)
+	}
+}
+
+// A relative state_dir or $HOME names a directory under the working
+// directory; the server's own directories are handed to pathguard absolute,
+// or every call would be refused as unconfigured.
+func TestServerOwnedDirsAreAbsolute(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", "relhome")
+	cfg := &Config{StateDir: "state", Path: filepath.Join(t.TempDir(), "ws.json")}
+	dirs := cfg.ServerOwnedDirs()
+	if len(dirs) != 3 {
+		t.Fatalf("ServerOwnedDirs = %q, want three entries", dirs)
+	}
+	for _, d := range dirs {
+		if !filepath.IsAbs(d) {
+			t.Errorf("ServerOwnedDirs entry %q is not absolute", d)
+		}
+	}
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workdir.Validate(work, dirs); err != nil {
+		t.Errorf("an ordinary work_dir with a relative state_dir: %v", err)
 	}
 }

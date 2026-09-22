@@ -160,8 +160,8 @@ func TestEveryCredentialTreeIsRefusedForUploadAndDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 		for name, why := range map[string]string{
-			"upload":   UploadDenied(file, file, nil),
-			"download": DownloadDenied(file, file, nil),
+			"upload":   upWhy(file, nil),
+			"download": downWhy(file, nil),
 		} {
 			if why == "" || !strings.Contains(why, rel) {
 				t.Errorf("%s of ~/%s: reason %q, want a refusal naming the tree", name, rel, why)
@@ -178,15 +178,15 @@ func TestAnUploadIsJudgedAsLeavingTheMachine(t *testing.T) {
 	work := realTempDir(t)
 	for _, rel := range []string{"id_rsa", "evidence/home/bob/.ssh/known_hosts", "service-account.json"} {
 		file := filepath.Join(work, rel)
-		if why := UploadDenied(file, file, nil); why == "" {
+		if why := upWhy(file, nil); why == "" {
 			t.Errorf("UploadDenied(%s) = \"\", want a refusal", rel)
 		}
-		if why := DownloadDenied(file, file, nil); why != "" {
+		if why := downWhy(file, nil); why != "" {
 			t.Errorf("DownloadDenied(%s) = %q, want accepted", rel, why)
 		}
 	}
 	env := filepath.Join(work, ".env")
-	if UploadDenied(env, env, nil) == "" || DownloadDenied(env, env, nil) == "" {
+	if upWhy(env, nil) == "" || downWhy(env, nil) == "" {
 		t.Error("a .env file was not refused both ways")
 	}
 }
@@ -204,10 +204,10 @@ func TestAnOrdinaryHomePathIsLeftAlone(t *testing.T) {
 	if err := os.WriteFile(file, []byte("nothing secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if why := UploadDenied(file, file, nil); why != "" {
+	if why := upWhy(file, nil); why != "" {
 		t.Errorf("UploadDenied(%q) refused an ordinary file: %s", file, why)
 	}
-	if why := DownloadDenied(file, file, nil); why != "" {
+	if why := downWhy(file, nil); why != "" {
 		t.Errorf("DownloadDenied(%q) refused an ordinary file: %s", file, why)
 	}
 }
@@ -217,12 +217,56 @@ func TestAnOrdinaryHomePathIsLeftAlone(t *testing.T) {
 func TestServerDirectoriesAreRefusedEverywhere(t *testing.T) {
 	own := realTempDir(t)
 	tokens := filepath.Join(own, "tokens.json")
-	if UploadDenied(tokens, tokens, []string{own}) == "" || DownloadDenied(tokens, tokens, []string{own}) == "" {
+	if upWhy(tokens, []string{own}) == "" || downWhy(tokens, []string{own}) == "" {
 		t.Error("the server's state directory was not refused both ways")
 	}
 	_, err := Validate(own, []string{own})
 	var we *Error
 	if !errors.As(err, &we) || we.Details["reason"] != "server_dir" {
 		t.Errorf("Validate(server dir) = %v, want work_dir_denied with reason server_dir", err)
+	}
+}
+
+// upWhy and downWhy are the sentence of a refusal for a path given once.
+func upWhy(p string, serverDirs []string) string {
+	_, why := UploadDenied(p, p, serverDirs)
+	return why
+}
+
+func downWhy(p string, serverDirs []string) string {
+	_, why := DownloadDenied(p, p, serverDirs)
+	return why
+}
+
+// The file policies return pathguard's reason with the sentence, the same
+// vocabulary work_dir_denied carries.
+func TestTheFilePoliciesCarryPathguardsReason(t *testing.T) {
+	home := realTempDir(t)
+	t.Setenv("HOME", home)
+	own := realTempDir(t)
+	tokens := filepath.Join(own, "tokens.json")
+	if reason, _ := UploadDenied(tokens, tokens, []string{own}); reason != "server_dir" {
+		t.Errorf("UploadDenied(tokens.json) reason = %q, want server_dir", reason)
+	}
+	key := filepath.Join(home, ".ssh", "id_ed25519")
+	if reason, _ := DownloadDenied(key, key, nil); reason != "sensitive_path" {
+		t.Errorf("DownloadDenied(~/.ssh/id_ed25519) reason = %q, want sensitive_path", reason)
+	}
+}
+
+// A directory beneath the work directory that no work directory may be — a
+// system tree — is refused with its reason; an ordinary one is not. The file
+// policies leave system places out by design.
+func TestDirDeniedAppliesTheWorkDirectoryList(t *testing.T) {
+	home := realTempDir(t)
+	t.Setenv("HOME", home)
+	if reason, _ := DirDenied(home, nil); reason != "home_dir" {
+		t.Errorf("DirDenied(home) reason = %q, want home_dir", reason)
+	}
+	if reason, why := DirDenied("/usr/share", nil); reason != "system_dir" || why == "" {
+		t.Errorf("DirDenied(/usr/share) = %q, %q; want system_dir", reason, why)
+	}
+	if reason, why := DirDenied(realTempDir(t), nil); why != "" {
+		t.Errorf("DirDenied(an ordinary directory) = %q, %q; want accepted", reason, why)
 	}
 }

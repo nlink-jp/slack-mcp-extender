@@ -6,17 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Another spelling of a refused place got past v0.4.1 and earlier.** APFS
+  folds case and the places were compared as strings, so `work_dir=~/.SSH`,
+  `GCLOUD/credentials.db` under `work_dir=~/.config`, and `WS.STATE/tokens.json`
+  under the parent of the state directory (the OAuth tokens, sent to Slack)
+  were accepted. Places are now compared by file identity and by folded name.
+- A credential file that does not exist was reported `not_found` while one
+  that exists was refused, which told the caller which secrets are there. It
+  is refused either way now.
+- A download whose directory is reached through a chain of links passing
+  through a credential directory is refused: only the end of the chain was
+  judged.
+
 ### Changed
 
 - **Path judgement moved to [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)**
   (ADR-0004). `internal/workdir` is now an adapter onto it, with the same call
-  shape; places are compared by file identity and by names folded the way the
-  disk folds them, instead of by name. `go.mod` requires that one module of this
-  organization, which itself has no dependency; CLAUDE.md says so.
+  shape. `go.mod` requires that one module of this organization, which itself
+  has no dependency; CLAUDE.md says so.
 - Uploads are judged as files that **leave the machine** (pathguard's Outbound
   policy): a file named as a secret (`id_rsa`, `credentials.json`,
-  `*service-account*.json`) or lying in a credential directory is refused
-  wherever it sits. Downloads are judged by the Local policy.
+  `*service-account*.json`) or whose path passes through a credential
+  directory or file name (`.ssh`, `.aws`, `.config/gcloud`, `.npmrc`, `.netrc`,
+  `.git-credentials`, `.bash_history`, `.docker/config.json`, `.claude.json`
+  and the like) is refused wherever it sits — a project's `.npmrc` with
+  `allow_hidden` included. Downloads are judged by the Local policy.
 - The real places under your home from the list gem-agent and lagent use are
   refused as `work_dir`, upload source and download target (newly `~/.kube`,
   `~/.config/gh`, `~/.azure`, `~/.terraform.d`, `~/.gemini`,
@@ -24,10 +40,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `~/.git-credentials`, `~/.vault-token`, `~/.docker/config.json`,
   `~/.claude.json`, `~/.bash_history`, `~/.zsh_history`), under every spelling,
   and wherever a link directly inside one of those directories points. When
-  `$HOME` names another directory than the account's home, both are protected.
-  When the home directory cannot be determined, every call is refused.
+  `$HOME` names another directory than the account's home, those places are
+  protected under both; this server's own directories follow `$HOME`, as they
+  did before. When the home directory cannot be determined, every call is
+  refused. `/etc` is refused as a work directory on Linux too.
+- The directory a file is taken from or lands in is judged by the list of
+  what may not be a work directory: a file under a system location is refused
+  in both directions (reachable only for a server running as root, through a
+  `work_dir` above a system tree), and so is a file directly in your home
+  directory reached through a `work_dir` above it.
+- A path that cannot be resolved — a chain of links that does not end, a NUL
+  byte, over 4096 bytes — is refused.
 - **`.env` is refused** as `sensitive_path`, even with `allow_hidden=true` (it
   could be uploaded then); its templates (`.env.example` and the like) are not.
+- `path_denied` for a floor refusal carries pathguard's reason in
+  `details.floor_reason` (`sensitive_path`, `server_dir`, `system_dir`,
+  `unresolvable_path`, `home_unknown`, `unconfigured`); `reason` stays
+  `sensitive_path`. A symlink to a file under `/etc` is refused as
+  `outside_allowed_roots` rather than `sensitive_path`.
 - `work_dir_denied` carries `reason` in its `details`, and the details now reach
   the caller.
 

@@ -18,6 +18,7 @@ package workdir
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/nlink-jp/pathguard"
 	pgwd "github.com/nlink-jp/pathguard/workdir"
@@ -71,23 +72,39 @@ func Validate(dir string, serverDirs []string) (string, error) {
 }
 
 // UploadDenied reports why a file may not be uploaded — it leaves the
-// machine, so pathguard's Outbound policy plus this server's directories — or
-// "". raw is the path as the caller spelled it and resolved its
-// symlink-resolved form.
+// machine, so pathguard's Outbound policy plus this server's directories —
+// as pathguard's reason and sentence, or two empty strings. raw is the path
+// as the caller spelled it and resolved its symlink-resolved form; for a file
+// not yet resolved, pass raw twice (pathguard follows the links itself).
 //
 // It is the floor underneath containment in the work directory
 // (internal/containment), applied to the file and not only to the directory:
 // `~/.config` passes as a work directory, and a file under it such as
 // `gcloud/credentials.db` is refused here. Neither stands in for the other.
-func UploadDenied(raw, resolved string, serverDirs []string) string {
-	_, why := resolver(serverDirs).OutboundPath(raw, resolved)
-	return why
+func UploadDenied(raw, resolved string, serverDirs []string) (reason, why string) {
+	return resolver(serverDirs).OutboundPath(raw, resolved)
 }
 
 // DownloadDenied reports why a download may not be written to a path — the
-// Local policy plus this server's directories — or "". Pass the same value
-// twice for a target that does not exist yet.
-func DownloadDenied(raw, resolved string, serverDirs []string) string {
-	_, why := resolver(serverDirs).LocalPath(raw, resolved)
-	return why
+// Local policy plus this server's directories — as pathguard's reason and
+// sentence, or two empty strings. Pass the same value twice for a target that
+// does not exist yet.
+func DownloadDenied(raw, resolved string, serverDirs []string) (reason, why string) {
+	return resolver(serverDirs).LocalPath(raw, resolved)
+}
+
+// DirDenied reports why a directory beneath the work directory — the one an
+// upload is taken from, or a download lands in — may not be used, as
+// pathguard's reason and sentence, or two empty strings. It applies the list
+// of what may not be a work directory, system directories among them, which
+// the two file policies leave out by design: a work directory that is an
+// ancestor of a system tree (reachable only for a server running as root)
+// must not make the files in it fair game.
+func DirDenied(dir string, serverDirs []string) (reason, why string) {
+	var e *Error
+	if !errors.As(resolver(serverDirs).CheckBeneath(dir), &e) {
+		return "", ""
+	}
+	reason, _ = e.Details["reason"].(string)
+	return reason, e.Message
 }

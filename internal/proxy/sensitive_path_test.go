@@ -216,6 +216,9 @@ func TestUploadRefusesTheServersOwnTokensFromAnAcceptedParent(t *testing.T) {
 		"work_dir": base, "channel_id": "C1", "file": filepath.Join("ws.state", "tokens.json"),
 	})
 	wantPathDenied(t, isErr, payload, tokens)
+	if d, _ := payload["details"].(map[string]any); d["floor_reason"] != "server_dir" {
+		t.Errorf("details.floor_reason = %v, want server_dir (the reason work_dir_denied gives)", d["floor_reason"])
+	}
 	if stub.req != nil {
 		t.Errorf("the OAuth token store was handed to the uploader: %+v", stub.req)
 	}

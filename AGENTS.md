@@ -33,7 +33,7 @@ make test-linux # same suite on Linux (container)
 make check      # lint + test + build-all
 make build-all  # cross-compile linux/{amd64,arm64}, darwin/arm64, windows/amd64
 make e2e        # LIVE tests vs the real Slack MCP (see below)
-make verify-release  # gate: .notarized marker + freshness (run before upload)
+make verify-release  # gate: notarized, fresh, runs at this version, clean linux archives (run before upload)
 ```
 
 Live E2E (`make e2e`, `//go:build e2e` in `e2e/`): requires

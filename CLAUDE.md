@@ -21,12 +21,18 @@ workspace CLAUDE.md) apply on top of these.
   widen it from Slack-derived values, and never add a second source of roots.
 - **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),
   with the path as named passed to the floor alongside, and alone when it
-  does not resolve. An upload (`Policy.Resolve`): credential floor →
-  containment in the work_dir → the directory's system-tree check →
-  regular-file-only → hidden-component rejection (relative to the work_dir) →
-  size cap. A download (`Policy.ResolveNewFile`): containment → credential
-  floor → the directory's system-tree check → hidden-component rejection →
-  nothing there yet. Do not reorder checks to run on raw input strings.
+  does not resolve. Both directions keep one order — resolve → credential
+  floor → containment in the work_dir → everything that depends on what
+  exists there — so **whether a path exists never changes the answer**: a
+  path that does not resolve goes to the floor, is placed by its deepest
+  existing ancestor (`outside_allowed_roots` if that is outside), and only
+  then is `not_found`. After containment: an upload (`Policy.Resolve`) —
+  the directory's check (a system directory or the home directory itself) →
+  regular-file-only → hidden-component rejection (relative to the work_dir)
+  → size cap; a download (`Policy.ResolveNewFile`) — is a directory → the
+  directory's check → hidden-component rejection → nothing there yet. Do not
+  reorder checks to run on raw input strings, and do not put an
+  existence-dependent check before the floor.
 - **The credential floor is applied to the file, not only to the work_dir**
   (ADR-021 §7 — the list is a floor, not a boundary). The judgement is
   nlink-jp/pathguard's (ADR-0004): `containment.Policy` consults

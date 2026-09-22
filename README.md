@@ -71,15 +71,17 @@ one named as a secret (`id_rsa`, `credentials.json`, `*service-account*.json`)
 or whose path passes through a credential directory or file name (`.ssh`,
 `.aws`, `.config/gcloud`, `.npmrc`, `.netrc`, `.git-credentials`,
 `.bash_history`, `.docker/config.json` and the like) wherever it sits — and so
-is a download destination that would write into one. A credential file that
-does not exist is refused the same way rather than reported missing, and a
-file whose directory is a system location is refused too. The refusal is a
-structured `path_denied` error with `reason: sensitive_path` naming the path
-and pathguard's own reason in `floor_reason` (`sensitive_path`, `server_dir`,
-`system_dir`, `unresolvable_path`, `home_unknown`, `unconfigured` — the
-values `work_dir_denied` gives in `reason`); it is written to the audit log
-like any other denial, and ordinary files inside an ordinary work_dir are
-unaffected.
+is a download destination that would write into one. Whether a path exists
+never changes the answer: a credential file that does not exist is refused
+the same way as one that does, and a path outside the work_dir is refused as
+outside whether or not it is there. A file whose directory is a system
+location, or your home directory itself (reached through a `work_dir` above
+it), is refused too. The refusal is a structured `path_denied` error with
+`reason: sensitive_path` naming the path and pathguard's own reason in
+`floor_reason` (`sensitive_path`, `server_dir`, `system_dir`, `home_dir`,
+`unresolvable_path`, `home_unknown`, `unconfigured` — the values
+`work_dir_denied` gives in `reason`); it is written to the audit log like any
+other denial, and ordinary files inside an ordinary work_dir are unaffected.
 
 ## Installation
 

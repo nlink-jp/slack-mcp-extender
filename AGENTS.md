@@ -112,28 +112,38 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   `~/Library` above `Library/Keychains`, and for the parent of the state
   directory above `tokens.json`. The list and its comparison are
   nlink-jp/pathguard's (ADR-0004; do not grow a second one). The containment
-  policy applies `workdir.UploadDenied` (Outbound policy) as stage 2 of
-  `Resolve` — ahead of containment, so the refusal names the credential
-  rather than the root it escaped — and `workdir.DownloadDenied` (Local
-  policy) to the target in `ResolveNewFile`, after containment, so a download
-  cannot write into one either. Both get the path as named as well as
-  resolved (pathguard follows every link hop, so a chain through a credential
-  directory is seen), and both run on the path as named when it does not
-  resolve, so a missing credential file is refused rather than reported
-  `not_found` — which would say which secrets exist. After containment,
-  `workdir.DirDenied` (pathguard's `CheckBeneath`) judges the directory the
-  file lies in by the list of what may not be a work directory: the file
-  policies leave system trees out by design. A `.env`, or a key under a
-  `.ssh` directory anywhere, is refused at this stage as `sensitive_path`,
-  before the hidden-component rule. Reason code: `sensitive_path`, with
+  policy applies `workdir.UploadDenied` (Outbound policy) to an upload's
+  source in `Resolve` and `workdir.DownloadDenied` (Local policy) to a
+  download's target in `ResolveNewFile`, in both **right after resolving and
+  ahead of containment**, so the refusal names the credential rather than
+  the root it escaped. Both get the path as named as well as resolved
+  (pathguard follows every link hop, so a chain through a credential
+  directory is seen), and on the path as named alone when it does not
+  resolve. **Whether a path exists never changes the answer**: nothing that
+  depends on what exists (is it a directory, is it a regular file, is
+  something already there) runs before the floor and containment, and a path
+  that does not resolve is placed by its deepest existing ancestor before it
+  is called `not_found` (`landing`) — a caller must not learn which secrets
+  exist, inside or outside the work directory
+  (`TestExistenceIsNotRevealed`). After containment, `workdir.DirDenied`
+  (pathguard's `CheckBeneath`) refuses a file whose directory is a system
+  directory or the home directory itself, which the file policies leave out
+  by design; the credential and server places it would also apply are left
+  to the file policies, or a Python venv named `.env` would be refused. On
+  upload, a `.env` or a key under a `.ssh` directory anywhere is refused as
+  `sensitive_path` before the hidden-component rule; on download only the
+  real places under the home are (a download named `id_rsa`, or into
+  `evidence/.../.ssh/`, is ordinary). Reason code: `sensitive_path`, with
   pathguard's own reason in `details.floor_reason` (`sensitive_path`,
-  `server_dir`, `system_dir`, `unresolvable_path`, `home_unknown`,
-  `unconfigured`) — the vocabulary `work_dir_denied` carries. Two of the cases
-  are only reachable through this stage: a symlink whose target is sensitive
-  but still inside the work_dir, and a destination path inside an accepted
-  work_dir. Tests: `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir`
-  and the rest of `internal/proxy/sensitive_path_test.go` (home directory
-  redirected with `t.Setenv`, never the operator's real one), the direction
+  `server_dir`, `system_dir`, `home_dir`, `unresolvable_path`,
+  `home_unknown`, `unconfigured`) — the vocabulary `work_dir_denied` carries.
+  Two of the cases are only reachable through this stage: a symlink whose
+  target is sensitive but still inside the work_dir, and a destination path
+  inside an accepted work_dir. Tests:
+  `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir` and the rest
+  of `internal/proxy/sensitive_path_test.go` (home directory redirected with
+  `t.Setenv`; pathguard also protects the account's real home, so the tests
+  stat the operator's real credential directories, read-only), the direction
   split and the rest in `internal/containment/pathguard_floor_test.go`, and
   the serverDirs mechanics in `internal/containment`. The **list** itself is
   pathguard's and is tested there; `check-org.sh` holds it equal to the one

@@ -27,12 +27,20 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
   credential name is refused wherever it sits) and `DownloadDenied` (Local). `containment.Policy`
   applies the first to an upload's source (`Resolve`) and the second to a download's target
   (`ResolveNewFile`), each on the path as named as well as resolved (pathguard follows every link
-  hop), and on the path as named alone when it does not resolve, so a missing credential file is
-  refused rather than reported `not_found`.
+  hop), and on the path as named alone when it does not resolve.
+- **Whether a path exists never changes the answer.** Both directions keep one order: resolve →
+  floor → containment → whatever depends on what exists (a directory, a regular file, nothing there
+  yet). A path that does not resolve goes to the floor and is then placed by its deepest existing
+  ancestor, `outside_allowed_roots` when that lies outside, before it is `not_found`. A missing
+  credential file and an existing one are refused alike, and so are a missing and an existing path
+  outside the work directory.
 - The file policies leave system places out by design, and a work directory above a system tree is
   reachable for a server running as root (`work_dir=/private` is stopped only as not writable).
-  `DirDenied` applies pathguard's `CheckBeneath` — the list of what may not be a work directory — to
-  the directory the file lies in, in both directions.
+  `DirDenied` applies pathguard's `CheckBeneath` to the directory the file lies in, in both
+  directions, keeping its refusals for a system directory and for the home directory itself; the
+  credential and server places it also applies are left to the file policies, which judge them by
+  direction (applied again, its rule for a directory named like a `.env` file refused a Python venv
+  called `.env`).
 - A floor refusal stays `path_denied` with `reason: sensitive_path` (what callers branch on), and
   pathguard's reason is added as `details.floor_reason` — the vocabulary `work_dir_denied` carries.
 - `config.Config.ServerOwnedDirs` makes each directory absolute: pathguard refuses every call for a

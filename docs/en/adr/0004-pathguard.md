@@ -26,13 +26,25 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
 - The file floor is split by direction: `UploadDenied` (Outbound — an upload leaves the machine, so a
   credential name is refused wherever it sits) and `DownloadDenied` (Local). `containment.Policy`
   applies the first to an upload's source (`Resolve`) and the second to a download's target
-  (`ResolveNewFile`).
+  (`ResolveNewFile`), each on the path as named as well as resolved (pathguard follows every link
+  hop), and on the path as named alone when it does not resolve, so a missing credential file is
+  refused rather than reported `not_found`.
+- The file policies leave system places out by design, and a work directory above a system tree is
+  reachable for a server running as root (`work_dir=/private` is stopped only as not writable).
+  `DirDenied` applies pathguard's `CheckBeneath` — the list of what may not be a work directory — to
+  the directory the file lies in, in both directions.
+- A floor refusal stays `path_denied` with `reason: sensitive_path` (what callers branch on), and
+  pathguard's reason is added as `details.floor_reason` — the vocabulary `work_dir_denied` carries.
+- `config.Config.ServerOwnedDirs` makes each directory absolute: pathguard refuses every call for a
+  place without an absolute path, and a relative `state_dir` or `$HOME` would have done that.
 - `work_dir_denied`'s `details` are returned to the caller (they were dropped).
 
 ## Consequences
 
 - **Refused now on upload**: a file named as a secret (`id_rsa`, `credentials.json`,
-  `*service-account*.json`) or lying in a credential directory, wherever it sits; the real places
+  `*service-account*.json`) or whose path passes through a credential directory or file name
+  (`.ssh`, `.aws`, `.npmrc`, `.netrc`, `.git-credentials`, `.bash_history`, `.docker/config.json`
+  and the like), wherever it sits — a project's `.npmrc` included, with `allow_hidden`; the real places
   under your home from the runtimes' list (newly `~/.kube`, `~/.config/gh`, `~/.netrc` and the
   rest); every spelling; and wherever a link directly inside one of those directories points.
 - **`.env` is refused now** (`sensitive_path`). With `allow_hidden=true` it could be uploaded. Three
@@ -40,7 +52,12 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
   file, and a separate test pins `.env` as `sensitive_path`. The templates (`.env.example` and the
   like) pass.
 - **An unknown home refuses everything.** When `$HOME` names another directory than the account's
-  home, both are protected.
+  home, the credential and agent-control places are protected under both; this server's own
+  directories follow `$HOME`, as they did before.
+- **Refused now in both directions**: a file whose directory is a system location; a path that
+  cannot be resolved (a chain of links that does not end, a NUL byte, over 4096 bytes), as
+  `unresolvable_path`; a file directly in your home directory reached through a `work_dir` above
+  it (`home_dir`). `/etc` is refused as a work directory on Linux too.
 - With no copy here, a fix to the judgement is a pathguard release and a one-line dependency update.
 
 ## References

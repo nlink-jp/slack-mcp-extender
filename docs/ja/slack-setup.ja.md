@@ -149,7 +149,7 @@ Claude Desktop を再起動すると、純正 Slack MCP の全ツールがその
 |---|---|
 | `no stored tokens (run ... login first)` | この config で手順 4 が未実施、または state ディレクトリが移動された |
 | `HTTP 401: authentication failed after token refresh` | トークン失効 — `login` をやり直す |
-| ツールエラー `path_denied` | ファイルが呼び出しの `work_dir` の外に解決される（または隠し・サイズ超過・通常ファイル以外）。`details` にどのルールとどの root かが入っている |
+| ツールエラー `path_denied` | ファイルが呼び出しの `work_dir` の外に解決される（または隠し・サイズ超過・通常ファイル以外）、または資格情報の場所・upload での秘密の名前・このサーバー自身のディレクトリ・システムの場所（`reason: sensitive_path`、具体的な理由は `floor_reason`）。`details` にどのルールとどの root かが入っている |
 | ツールエラー `slack_api_error: not_in_channel` | 認可ユーザーが対象チャンネルに未参加 — 先に Slack 側で参加する |
 | callback でブラウザ警告 | 想定内（自己署名 loopback TLS）— そのまま進む |
 | 作成直後のチャンネルが検索ツールで見つからない | Slack の検索インデックスは新規チャンネルの反映が遅れる。チャンネル ID を直接指定するか、反映を待つ |

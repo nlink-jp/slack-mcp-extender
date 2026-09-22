@@ -20,9 +20,13 @@ workspace CLAUDE.md) apply on top of these.
   a download lands inside it, and nothing outside it can be reached. Never
   widen it from Slack-derived values, and never add a second source of roots.
 - **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),
-  then: credential floor → containment in the work_dir → regular-file-only →
-  hidden-component rejection (relative to the work_dir) → size cap. Do not
-  reorder checks to run on raw input strings.
+  with the path as named passed to the floor alongside, and alone when it
+  does not resolve. An upload (`Policy.Resolve`): credential floor →
+  containment in the work_dir → the directory's system-tree check →
+  regular-file-only → hidden-component rejection (relative to the work_dir) →
+  size cap. A download (`Policy.ResolveNewFile`): containment → credential
+  floor → the directory's system-tree check → hidden-component rejection →
+  nothing there yet. Do not reorder checks to run on raw input strings.
 - **The credential floor is applied to the file, not only to the work_dir**
   (ADR-021 §7 — the list is a floor, not a boundary). The judgement is
   nlink-jp/pathguard's (ADR-0004): `containment.Policy` consults

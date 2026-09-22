@@ -53,19 +53,23 @@ chatops-series の他ツール（swrite, stail, slack-router）は bot 認証で
 このリスト（gem-agent と lagent が使う、ホームにある資格情報・エージェント制御の場所 ——
 `~/.ssh`, `~/.aws`, `~/.kube`, `~/.config/gcloud`, `~/.config/gh`, `~/.gnupg`, `~/.netrc`,
 `~/Library/Keychains`, `~/.claude`, `~/.codex`, `~/.config/{gem-agent,lagent}` など ——、任意の
-`.env`、およびこのサーバー自身のディレクトリ。ファイルの実体とディスクと同じやり方で同一視した名前で比べる
-[nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)）は
+`.env`、およびこのサーバー自身のディレクトリで、ファイルの実体と、ディスクと同じやり方で同一視した名前とで比べる
+—— [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)）は
 境界ではなく「床」であり、`work_dir` だけに当てる床は、資格情報ディレクトリの
 一つ上を名指しすれば踏み越えられます —— `~/.config` 自体はリストに無いので
 work_dir として通り、その配下の `gcloud/credentials.db` は誰も見ていませんでした。
-現在は、呼び出し側が名指ししたパスを使用時点で同じリストに照合します。照合前に
-symlink を解決するので、無害に見えるリンクで対象を差し替えることもできません。
+現在は、呼び出し側が名指ししたパスを使用時点で同じリストに照合します。途中の
+symlink をすべてたどるので、無害に見えるリンクで対象を差し替えることもできません。
 方向は両方とも対象で、実体が上記の位置に落ちる upload は拒否し —— upload はマシンの外へ
 出るので、秘密の名前を持つファイル（`id_rsa`、`credentials.json`、`*service-account*.json`）や、
-どこにあっても資格情報のディレクトリの中のファイルも拒否し ——、そこへ書き込む download の保存先も
-拒否します。拒否は構造化 `path_denied` エラー
-（`reason: sensitive_path`）でパス名を含み、他の拒否と同様に監査ログへ記録します。
-通常の work_dir 内の通常のファイルには影響しません。
+どこにあってもパスが資格情報のディレクトリ名・ファイル名（`.ssh`、`.aws`、`.config/gcloud`、
+`.npmrc`、`.netrc`、`.git-credentials`、`.bash_history`、`.docker/config.json` など）を通る
+ファイルも拒否し ——、そこへ書き込む download の保存先も拒否します。存在しない資格情報
+ファイルも「見つからない」ではなく同じく拒否し、ディレクトリがシステムの場所であるファイルも
+拒否します。拒否は構造化 `path_denied` エラー（`reason: sensitive_path`）でパス名を含み、
+pathguard 自身の理由を `floor_reason` に入れます（`sensitive_path`、`server_dir`、`system_dir`、
+`unresolvable_path`、`home_unknown`、`unconfigured` —— `work_dir_denied` が `reason` に入れる値と
+同じ）。他の拒否と同様に監査ログへ記録し、通常の work_dir 内の通常のファイルには影響しません。
 
 ## インストール
 

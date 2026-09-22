@@ -155,7 +155,7 @@ tool unchanged, plus `ext_file_upload`, `ext_file_upload_to_thread`, and `ext_fi
 |---|---|
 | `no stored tokens (run ... login first)` | Step 4 not done for this config, or the state dir moved. |
 | `HTTP 401: authentication failed after token refresh` | Token revoked — run `login` again. |
-| Tool error `path_denied` | The file resolves outside the call's `work_dir` (or is hidden / too large / not a regular file). The error's `details` say which rule and which root. |
+| Tool error `path_denied` | The file resolves outside the call's `work_dir` (or is hidden / too large / not a regular file), or it is a credential location, a secret's name on upload, this server's own directory or a system location (`reason: sensitive_path`, with the specific reason in `floor_reason`). The error's `details` say which rule and which root. |
 | Tool error `slack_api_error: not_in_channel` | The authorizing user is not a member of the target channel — join it in Slack first. |
 | Browser warning on the callback | Expected (self-signed loopback TLS) — click through. |
 | A freshly created channel is not found by the search tools | Slack's search index lags new channels. Ask the agent to use a channel ID directly, or wait for indexing. |

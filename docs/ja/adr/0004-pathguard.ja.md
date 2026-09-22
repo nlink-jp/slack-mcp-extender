@@ -21,18 +21,33 @@ ADR-0003 以来、`work_dir` の検証と、ファイルに当てる資格情報
   そのままで、`Error` とコードは pathguard のものを出し直す（`work_dir_denied` は `details` に `reason` を持つ）。
 - ファイルの床は向きで分ける: `UploadDenied`（Outbound。upload はマシンの外へ出るので、資格情報の名前はどこに
   あっても拒む）と `DownloadDenied`（Local）。`containment.Policy` は upload の元（`Resolve`）に前者を、download の
-  保存先（`ResolveNewFile`）に後者を当てる。
+  保存先（`ResolveNewFile`）に後者を当てる。どちらも名指しされたままのパスと解決したパスの両方で（pathguard が
+  途中のリンクをすべてたどる）、解決できないときは名指しされたパスだけで判定するので、存在しない資格情報
+  ファイルは `not_found` ではなく拒否になる。
+- ファイルの方針はシステムの場所を設計上含まない。システムのツリーの上にある作業ディレクトリは、root で動く
+  サーバーなら届く（`work_dir=/private` は書き込めないことでしか止まらない）。`DirDenied` が pathguard の
+  `CheckBeneath`（作業ディレクトリにしてはならない場所の一覧）を、ファイルのあるディレクトリに両方向で当てる。
+- 床での拒否は `path_denied` の `reason: sensitive_path`（呼び出し側が分岐に使う値）のままとし、pathguard の理由を
+  `details.floor_reason` に加える —— `work_dir_denied` が持つのと同じ語彙。
+- `config.Config.ServerOwnedDirs` は各ディレクトリを絶対パスにする。pathguard は絶対パスでない場所があると
+  すべての呼び出しを拒むので、相対の `state_dir` や `$HOME` ではそうなっていた。
 - `work_dir_denied` の `details` を呼び出し側に返す（これまでは捨てていた）。
 
 ## 結果
 
 - **upload で新たに拒む**: 秘密の名前を持つファイル（`id_rsa`、`credentials.json`、`*service-account*.json`）と、
-  どこにあっても資格情報のディレクトリの中のファイル。ランタイムと同じ一覧のうちホームにある本物の場所
+  どこにあってもパスが資格情報のディレクトリ名・ファイル名（`.ssh`、`.aws`、`.npmrc`、`.netrc`、
+  `.git-credentials`、`.bash_history`、`.docker/config.json` など）を通るファイル（`allow_hidden` のときの
+  プロジェクトの `.npmrc` も）。ランタイムと同じ一覧のうちホームにある本物の場所
   （新たに `~/.kube`、`~/.config/gh`、`~/.netrc` など）。あらゆる綴り、直下のリンクの指す先。
 - **`.env` を新たに拒む**（`sensitive_path`）。これまでは `allow_hidden=true` のとき upload できた。封じ込めの
   テスト 3 本は `.env` を隠しファイルの例にしていたので、ふつうの隠しファイルの例に改め、`.env` が
   `sensitive_path` で拒まれることを別に確かめる。ひな形（`.env.example` など）は通す。
-- **ホームが分からなければすべて拒む**。`$HOME` がアカウントのホームと違うときは両方を守る。
+- **ホームが分からなければすべて拒む**。`$HOME` がアカウントのホームと違うときは、資格情報・エージェント制御の
+  場所を両方のホームで守る。このサーバー自身のディレクトリはこれまでどおり `$HOME` に従う。
+- **両方向で新たに拒む**: ディレクトリがシステムの場所であるファイル。解決できないパス（終わらないリンクの
+  連鎖、NUL、4096 バイト超）を `unresolvable_path` で。上にある `work_dir` 経由でホーム直下のファイルを
+  名指したもの（`home_dir`）。Linux でも `/etc` を作業ディレクトリとして拒む。
 - 写しを持たないので、判定の修正は pathguard のリリースと、ここでの依存の更新 1 行になる。
 
 ## 参照

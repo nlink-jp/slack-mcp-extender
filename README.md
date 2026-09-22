@@ -63,16 +63,22 @@ and by folded name ([nlink-jp/pathguard](https://github.com/nlink-jp/pathguard))
 over by naming the directory just above a credential one: `~/.config` is not
 itself on the list, so it passed as a work directory, and a call naming
 `gcloud/credentials.db` under it was never looked at. Every caller-named path
-is now checked against the same list at the point of use, with symlinks
-resolved first so an innocuous-looking link cannot stand in for its target,
-and in both directions: an upload whose real path lands in one of those
-locations is refused — and because an upload leaves the machine, so is one
-named as a secret (`id_rsa`, `credentials.json`, `*service-account*.json`) or
-lying in a credential directory wherever it sits — and so is a download
-destination that would write into
-one. The refusal is a structured `path_denied` error with
-`reason: sensitive_path` naming the path, it is written to the audit log like
-any other denial, and ordinary files inside an ordinary work_dir are
+is now checked against the same list at the point of use, with every
+symlink on the way followed so an innocuous-looking link cannot stand in for
+its target, and in both directions: an upload whose real path lands in one of
+those locations is refused — and because an upload leaves the machine, so is
+one named as a secret (`id_rsa`, `credentials.json`, `*service-account*.json`)
+or whose path passes through a credential directory or file name (`.ssh`,
+`.aws`, `.config/gcloud`, `.npmrc`, `.netrc`, `.git-credentials`,
+`.bash_history`, `.docker/config.json` and the like) wherever it sits — and so
+is a download destination that would write into one. A credential file that
+does not exist is refused the same way rather than reported missing, and a
+file whose directory is a system location is refused too. The refusal is a
+structured `path_denied` error with `reason: sensitive_path` naming the path
+and pathguard's own reason in `floor_reason` (`sensitive_path`, `server_dir`,
+`system_dir`, `unresolvable_path`, `home_unknown`, `unconfigured` — the
+values `work_dir_denied` gives in `reason`); it is written to the audit log
+like any other denial, and ordinary files inside an ordinary work_dir are
 unaffected.
 
 ## Installation

@@ -8,8 +8,9 @@
 // confined to the work_dir each call names (canonicalized containment,
 // deny-by-default, hidden path components rejected): the tool relays
 // untrusted Slack content, reads local files, and sends data out, so every
-// file argument is resolved inside that one directory. Zero external
-// dependencies.
+// file argument is resolved inside that one directory. No third-party
+// dependencies: the standard library and nlink-jp/pathguard, this
+// organization's own module.
 package main
 
 import (

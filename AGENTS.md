@@ -111,34 +111,42 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   under it reached `ext_file_upload` unexamined. The same holds for
   `~/Library` above `Library/Keychains`, and for the parent of the state
   directory above `tokens.json`. The list and its comparison are
-  nlink-jp/pathguard's (ADR-0004; do not grow a second one): the containment
-  policy applies `workdir.UploadDenied` (Outbound policy) as stage 2
-  of `Resolve` — ahead of containment, so the refusal names the credential
+  nlink-jp/pathguard's (ADR-0004; do not grow a second one). The containment
+  policy applies `workdir.UploadDenied` (Outbound policy) as stage 2 of
+  `Resolve` — ahead of containment, so the refusal names the credential
   rather than the root it escaped — and `workdir.DownloadDenied` (Local
-  policy) to the joined target in `ResolveNewFile`, so a download cannot write
-  into one either. A `.env`, or a key under a `.ssh` directory anywhere, is
-  refused at this stage as `sensitive_path`, before the hidden-component rule. Reason code:
-  `sensitive_path`. Two of the cases are only reachable through this stage:
-  a symlink whose target is sensitive but still inside the work_dir, and a
-  destination path inside an accepted work_dir. Tests:
-  `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir` and the rest
-  of `internal/proxy/sensitive_path_test.go` (home directory redirected with
-  `t.Setenv`, never the operator's real one), plus the serverDirs mechanics in
-  `internal/containment`. The **list** is held separately, in
-  `workdir.TestCredentialListHasNotDrifted` and
-  `TestDeniedPathRefusesEveryEntryOnTheCredentialList`: those scenario tests
-  exercise `.config/gcloud` and the state directory, so without a table over
-  the entries an entry dropped from `sensitiveHomeTrees` took no test with it.
-  The table states the expected list rather than iterating the implementation's
-  — iterating it means a deleted entry is simply not visited, which was
-  measured passing that mutation.
+  policy) to the target in `ResolveNewFile`, after containment, so a download
+  cannot write into one either. Both get the path as named as well as
+  resolved (pathguard follows every link hop, so a chain through a credential
+  directory is seen), and both run on the path as named when it does not
+  resolve, so a missing credential file is refused rather than reported
+  `not_found` — which would say which secrets exist. After containment,
+  `workdir.DirDenied` (pathguard's `CheckBeneath`) judges the directory the
+  file lies in by the list of what may not be a work directory: the file
+  policies leave system trees out by design. A `.env`, or a key under a
+  `.ssh` directory anywhere, is refused at this stage as `sensitive_path`,
+  before the hidden-component rule. Reason code: `sensitive_path`, with
+  pathguard's own reason in `details.floor_reason` (`sensitive_path`,
+  `server_dir`, `system_dir`, `unresolvable_path`, `home_unknown`,
+  `unconfigured`) — the vocabulary `work_dir_denied` carries. Two of the cases
+  are only reachable through this stage: a symlink whose target is sensitive
+  but still inside the work_dir, and a destination path inside an accepted
+  work_dir. Tests: `proxy.TestUploadRefusesACredentialFileUnderAnAcceptedWorkDir`
+  and the rest of `internal/proxy/sensitive_path_test.go` (home directory
+  redirected with `t.Setenv`, never the operator's real one), the direction
+  split and the rest in `internal/containment/pathguard_floor_test.go`, and
+  the serverDirs mechanics in `internal/containment`. The **list** itself is
+  pathguard's and is tested there; `check-org.sh` holds it equal to the one
+  gem-agent and lagent declare.
 - Hidden-component rejection applies to path components **below the work_dir**
   only (the work directory itself may live under a dot directory).
-- `.env` is on ADR-021 §7's list but is **not** in the credential floor here:
-  reads are confined to the work_dir, and a `.env` below it is already
-  refused by the hidden-component stage. Adding it to the floor would
-  override `allow_hidden`, which is the operator's explicit opt-out — a
-  decision to make deliberately, not as a side effect.
+- `.env` **is** on the credential floor (pathguard; ADR-0004): it is refused
+  as `sensitive_path` even with `allow_hidden=true`, because with the opt-out
+  set it could otherwise be uploaded. Its templates (`.env.example`,
+  `.env.sample`, `.env.template`, `.env.dist`) are not.
+- `config.Config.ServerOwnedDirs` hands pathguard absolute paths: a relative
+  `state_dir` or `$HOME` would otherwise make every call fail as
+  `unconfigured`, blaming the caller's `work_dir`.
 - The OAuth requested scopes must include `files:write`; adding it requires
   one re-consent per workspace, and token rotation can affect scli (shared
   app) if token stores are separate.

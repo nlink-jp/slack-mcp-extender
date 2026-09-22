@@ -159,6 +159,11 @@ func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string,
 	if why == "" {
 		return nil
 	}
+	// A path that does not resolve has no place of its own: the last hop of a
+	// chain that does not end is a path the caller never gave, so name theirs.
+	if reason == "unresolvable_path" {
+		resolved = raw
+	}
 	return &Violation{
 		Reason: ReasonSensitivePath,
 		Path:   resolved,
@@ -278,7 +283,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 	// depend on containment to hold: the hole this stage closes was a work
 	// directory that containment accepted, `~/.config`, with
 	// `gcloud/credentials.db` named under it.
-	if v := p.sensitive(raw, where, workdir.UploadDenied); v != nil {
+	if v := p.sensitive(filepath.Clean(raw), where, workdir.UploadDenied); v != nil {
 		return "", v
 	}
 
@@ -292,10 +297,12 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		return "", v
 	}
 
-	// Only now: an upload source must exist. If it resolves anywhere but
-	// where it was placed (it changed in between), the judgements above are
-	// made again on what it resolves to.
-	canonical, err := filepath.EvalSymlinks(filepath.Clean(raw))
+	// Only now: an upload source must exist — at its place, not re-walked from
+	// the spelling, which could step through a component the place skipped
+	// (a link whose target has `..` after a missing or non-directory part)
+	// and answer for what exists there. If the place resolves anywhere else
+	// (it changed in between), the judgements above are made again.
+	canonical, err := filepath.EvalSymlinks(where)
 	if err != nil {
 		return "", &Violation{
 			Reason: ReasonNotFound,
@@ -305,7 +312,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		}
 	}
 	if canonical != where {
-		if v := p.sensitive(raw, canonical, workdir.UploadDenied); v != nil {
+		if v := p.sensitive(filepath.Clean(raw), canonical, workdir.UploadDenied); v != nil {
 			return "", v
 		}
 		if matchedRoot = p.matchRoot(canonical, false); matchedRoot == "" {
@@ -460,9 +467,10 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 		return "", v
 	}
 
-	// Only now: the destination must exist and be a directory. If it resolves
-	// anywhere but where it was placed, the judgements are made again.
-	canonicalDir, err := filepath.EvalSymlinks(filepath.Clean(raw))
+	// Only now: the destination must exist, at its place, and be a
+	// directory. If the place resolves anywhere else, the judgements are made
+	// again.
+	canonicalDir, err := filepath.EvalSymlinks(whereDir)
 	if err != nil {
 		return "", &Violation{
 			Reason: ReasonNotFound,

@@ -66,7 +66,8 @@ symlink をすべてたどるので、無害に見えるリンクで対象を差
 `.npmrc`、`.netrc`、`.git-credentials`、`.bash_history`、`.docker/config.json` など）を通る
 ファイルも拒否し ——、そこへ書き込む download の保存先も拒否します。パスが存在するかどうかで
 答えは変わりません: 存在しない資格情報ファイルも存在するものと同じく拒否し、work_dir の外の
-パスは、あってもなくても「外」として拒否します。ディレクトリがシステムの場所、またはホーム
+パスは、あってもなくても「外」として拒否します（例外は 1 つ: work_dir の外に仕込まれた、資格情報
+ファイルへのハードリンクは資格情報として拒否します）。ディレクトリがシステムの場所、またはホーム
 ディレクトリそのもの（その上の `work_dir` 経由）であるファイルも拒否します。拒否は構造化
 `path_denied` エラー（`reason: sensitive_path`）でパス名を含み、pathguard 自身の理由を
 `floor_reason` に入れます（`sensitive_path`、`server_dir`、`system_dir`、`home_dir`、

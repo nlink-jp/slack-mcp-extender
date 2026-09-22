@@ -26,7 +26,9 @@ workspace CLAUDE.md) apply on top of these.
   floor → containment in the work_dir → the directory's check (a system
   directory or the home directory itself) → everything that depends on what
   exists there — so **whether a path exists never changes the answer**,
-  message and details included. After those: an upload (`Policy.Resolve`) —
+  message and details included (existence is checked at the place, never
+  re-walked from the spelling; the one known exception is a hard link to a
+  credential file planted outside the work_dir). After those: an upload (`Policy.Resolve`) —
   exists (EvalSymlinks; judged again if it resolves elsewhere) →
   regular-file-only → hidden-component rejection (relative to the work_dir)
   → size cap; a download (`Policy.ResolveNewFile`) — exists and is a

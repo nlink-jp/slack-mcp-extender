@@ -74,7 +74,8 @@ or whose path passes through a credential directory or file name (`.ssh`,
 is a download destination that would write into one. Whether a path exists
 never changes the answer: a credential file that does not exist is refused
 the same way as one that does, and a path outside the work_dir is refused as
-outside whether or not it is there. A file whose directory is a system
+outside whether or not it is there (the one exception: a hard link to a
+credential file planted outside the work_dir is refused as a credential). A file whose directory is a system
 location, or your home directory itself (reached through a `work_dir` above
 it), is refused too. The refusal is a structured `path_denied` error with
 `reason: sensitive_path` naming the path and pathguard's own reason in

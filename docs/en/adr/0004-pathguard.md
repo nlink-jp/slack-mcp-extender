@@ -26,16 +26,20 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
 - The file floor is split by direction: `UploadDenied` (Outbound — an upload leaves the machine, so a
   credential name is refused wherever it sits) and `DownloadDenied` (Local). `containment.Policy`
   applies the first to an upload's source (`Resolve`) and the second to a download's target
-  (`ResolveNewFile`), each on the path as named as well as resolved (pathguard follows every link
-  hop), and on the path as named alone when it does not resolve.
+  (`ResolveNewFile`), each on the path as named (cleaned) and as placed (pathguard follows every
+  link hop).
 - **Whether a path exists never changes the answer.** Both directions keep one order on one code
   path: place the path (`workdir.Where`, the last of pathguard's forms — every link followed, a
   dangling one by its target; for a path that exists, what EvalSymlinks returns) → floor →
   containment → the directory check → whatever depends on what exists (does it resolve, a directory,
   a regular file, nothing there yet). A missing credential file and an existing one are refused
   alike, and so are a missing and an existing path outside the work directory, message and details
-  included. Two earlier versions of this fix gave a path that did not resolve a branch of its own,
-  and each left one pair of answers apart.
+  included. Existence is checked at the place, never re-walked from the spelling, which could step
+  through a component the place skipped. Earlier versions of this fix gave a path that did not
+  resolve a branch of its own, and each left one pair of answers apart. The one known exception: a
+  hard link to a credential file, planted outside the work directory, is refused as a credential
+  while a missing path there is outside — pathguard's identity comparison needs a file that exists,
+  and it runs before containment so that a refusal names the credential.
 - The file policies leave system places out by design, and a work directory above a system tree is
   reachable for a server running as root (`work_dir=/private` is stopped only as not writable).
   `DirDenied` applies pathguard's `CheckBeneath` to the directory the file lies in, in both

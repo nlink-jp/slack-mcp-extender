@@ -275,3 +275,94 @@ func TestAnEnvNamedDirectoryIsOrdinary(t *testing.T) {
 	writeFile(t, filepath.Join(work, "app", ".env"), "TOKEN=x")
 	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("app", ".env"))), ReasonSensitivePath)
 }
+
+// The corners of placing a path, each found by probing: a planted link whose
+// target climbs with `..` past a component that is a directory, a file or
+// missing must get one answer in all three cases (existence is checked at the
+// place, not re-walked from the spelling); the home-directory check answers
+// before existence on the download side too; a chain of links that does not
+// end is named as the caller spelled it; and an absolute path with `..`
+// through a link is judged as the file that is opened, like its relative
+// spelling.
+func TestPlacementCorners(t *testing.T) {
+	t.Setenv("HOME", canonTemp(t))
+	plant := canonTemp(t)
+	other := canonTemp(t)
+	writeFile(t, filepath.Join(plant, "sub", "x.txt"), "x")
+	if err := os.Mkdir(filepath.Join(other, "probe_d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(other, "probe_f"), "x")
+	rel, err := filepath.Rel(other, filepath.Join(plant, "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"d", "f", "m"} {
+		// Written as a string: filepath.Join would clean the ".." away.
+		target := filepath.Join(other, "probe_"+k) + string(filepath.Separator) + ".." + string(filepath.Separator) + rel
+		if err := os.Symlink(target, filepath.Join(plant, "L_"+k)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+	p := mustPolicy(t, []string{plant}, true, 0)
+	answer := func(_ string, err error) string {
+		var v *Violation
+		if errors.As(err, &v) {
+			return v.Reason + "/" + v.Floor
+		}
+		return fmt.Sprint(err)
+	}
+	for name, call := range map[string]func(k string) string{
+		"upload":   func(k string) string { return answer(p.Resolve(plant, filepath.Join("L_"+k, "x.txt"))) },
+		"download": func(k string) string { return answer(p.ResolveNewFile(plant, "L_"+k, "new.txt")) },
+	} {
+		d, f, m := call("d"), call("f"), call("m")
+		if d != f || d != m {
+			t.Errorf("%s through a link climbing past a directory / a file / nothing: %s / %s / %s", name, d, f, m)
+		}
+	}
+
+	// The home-directory check, download side, whether the home exists.
+	for _, exists := range []bool{true, false} {
+		base := canonTemp(t)
+		home := filepath.Join(base, "home")
+		if exists {
+			if err := os.Mkdir(home, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("HOME", home)
+		pb := mustPolicy(t, []string{base}, true, 0)
+		v := wantViolation(t, mustFail(pb.ResolveNewFile(base, "home", "x.txt")), ReasonSensitivePath)
+		if v.Floor != "home_dir" {
+			t.Errorf("download into the home directory (exists=%v): Floor = %q, want home_dir", exists, v.Floor)
+		}
+	}
+
+	// A loop is named as the caller gave it.
+	t.Setenv("HOME", canonTemp(t))
+	if err := os.Symlink("loopB", filepath.Join(plant, "loopA")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("loopA", filepath.Join(plant, "loopB")); err != nil {
+		t.Fatal(err)
+	}
+	v := wantViolation(t, mustFail(p.Resolve(plant, "loopA")), ReasonSensitivePath)
+	if v.Floor != "unresolvable_path" || filepath.Base(v.Path) != "loopA" {
+		t.Errorf("a loop: Floor %q, Path %q; want unresolvable_path naming loopA", v.Floor, v.Path)
+	}
+
+	// An absolute `..` through a link: judged as the file opened.
+	aws := filepath.Join(os.Getenv("HOME"), ".aws", "sub")
+	if err := os.MkdirAll(aws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(aws, filepath.Join(plant, "lnk")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(plant, "f.txt"), "x")
+	abs := filepath.Join(plant, "lnk") + string(filepath.Separator) + ".." + string(filepath.Separator) + "f.txt"
+	if got, want := answer(p.Resolve("", abs)), answer(p.Resolve(plant, "f.txt")); got != want {
+		t.Errorf("absolute %s → %s, relative f.txt → %s; want the same", abs, got, want)
+	}
+}

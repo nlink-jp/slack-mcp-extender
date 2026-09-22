@@ -127,9 +127,15 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   must not learn which secrets exist, inside or outside the work directory.
   `TestExistenceIsNotRevealed` compares the whole answer (reason,
   `floor_reason`, path, message) for pairs that differ only in existence,
-  planted and dangling links among them; two earlier fixes each left one
-  such pair, because the path that did not resolve had a branch of its
-  own. After containment, `workdir.DirDenied`
+  planted and dangling links among them, and `TestPlacementCorners` the
+  probes that found the rest: existence is checked by resolving the place,
+  not the spelling (a link whose target climbs with `..` past a missing or
+  non-directory component otherwise answers for what is there), a loop is
+  named as the caller gave it, and the floor gets the cleaned path that is
+  opened. Earlier fixes each left one such pair, because the path that did
+  not resolve had a branch of its own. The one known exception: a hard link
+  to a credential file planted outside the work_dir is refused as a
+  credential (pathguard's identity comparison, before containment). After containment, `workdir.DirDenied`
   (pathguard's `CheckBeneath`) refuses a file whose directory is a system
   directory or the home directory itself, which the file policies leave out
   by design; the credential and server places it would also apply are left

@@ -93,6 +93,19 @@ func DownloadDenied(raw, resolved string, serverDirs []string) (reason, why stri
 	return resolver(serverDirs).LocalPath(raw, resolved)
 }
 
+// Where returns where p is, or would be: every link on it followed, a
+// dangling one by its target, and the rest appended — for a path that
+// exists, what filepath.EvalSymlinks returns. It is the last of pathguard's
+// forms of p, so a path that does not resolve is placed the same way the
+// floor sees it, before anything says whether it exists.
+func Where(p string) string {
+	f := pathguard.Forms(p)
+	if len(f) == 0 {
+		return p
+	}
+	return f[len(f)-1]
+}
+
 // DirDenied reports why a directory beneath the work directory — the one an
 // upload is taken from, or a download lands in — may not be used, as
 // pathguard's reason and sentence, or two empty strings: a system directory,

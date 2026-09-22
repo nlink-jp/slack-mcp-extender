@@ -114,26 +114,31 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   nlink-jp/pathguard's (ADR-0004; do not grow a second one). The containment
   policy applies `workdir.UploadDenied` (Outbound policy) to an upload's
   source in `Resolve` and `workdir.DownloadDenied` (Local policy) to a
-  download's target in `ResolveNewFile`, in both **right after resolving and
-  ahead of containment**, so the refusal names the credential rather than
-  the root it escaped. Both get the path as named as well as resolved
-  (pathguard follows every link hop, so a chain through a credential
-  directory is seen), and on the path as named alone when it does not
-  resolve. **Whether a path exists never changes the answer**: nothing that
-  depends on what exists (is it a directory, is it a regular file, is
-  something already there) runs before the floor and containment, and a path
-  that does not resolve is placed by its deepest existing ancestor before it
-  is called `not_found` (`landing`) — a caller must not learn which secrets
-  exist, inside or outside the work directory
-  (`TestExistenceIsNotRevealed`). After containment, `workdir.DirDenied`
+  download's target in `ResolveNewFile`, in both **ahead of containment**, so
+  the refusal names the credential rather than the root it escaped. Both run
+  on the path as named and as **placed** — `workdir.Where`, the last of
+  pathguard's forms: every link followed, a dangling one by its target, and
+  for a path that exists exactly what EvalSymlinks returns — so a chain
+  through a credential directory is seen. **Whether a path exists never
+  changes the answer**: the floor, containment and the directory check all
+  run on the placed path, one code path whether it exists or not, and
+  nothing that depends on what exists (does it resolve, is it a directory or
+  a regular file, is something already there) runs before them — a caller
+  must not learn which secrets exist, inside or outside the work directory.
+  `TestExistenceIsNotRevealed` compares the whole answer (reason,
+  `floor_reason`, path, message) for pairs that differ only in existence,
+  planted and dangling links among them; two earlier fixes each left one
+  such pair, because the path that did not resolve had a branch of its
+  own. After containment, `workdir.DirDenied`
   (pathguard's `CheckBeneath`) refuses a file whose directory is a system
   directory or the home directory itself, which the file policies leave out
   by design; the credential and server places it would also apply are left
   to the file policies, or a Python venv named `.env` would be refused. On
   upload, a `.env` or a key under a `.ssh` directory anywhere is refused as
-  `sensitive_path` before the hidden-component rule; on download only the
-  real places under the home are (a download named `id_rsa`, or into
-  `evidence/.../.ssh/`, is ordinary). Reason code: `sensitive_path`, with
+  `sensitive_path` before the hidden-component rule; on download, a `.env`
+  anywhere and the real places under the home are, and a download named
+  `id_rsa` is ordinary (into `evidence/.../.ssh/` too, with `allow_hidden`;
+  without it the hidden-component rule refuses it). Reason code: `sensitive_path`, with
   pathguard's own reason in `details.floor_reason` (`sensitive_path`,
   `server_dir`, `system_dir`, `home_dir`, `unresolvable_path`,
   `home_unknown`, `unconfigured`) — the vocabulary `work_dir_denied` carries.

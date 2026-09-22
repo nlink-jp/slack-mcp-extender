@@ -13,12 +13,13 @@
 // Check order of Resolve, the upload source (do not reorder; each stage
 // assumes the previous ones):
 //
-//  1. canonicalize   Abs + Clean + EvalSymlinks — all later checks run on
-//     the real path, so `..` tricks and symlink disguises are resolved away.
-//     A path that does not resolve is put to the floor, then placed by its
-//     deepest existing ancestor (outside the roots it is outside), and only
-//     then called missing: whether a path exists never changes the answer
-//  2. credential floor  the path, as named and resolved, may not lie in a
+//  1. place          where the path is or would be, every link followed, a
+//     dangling one by its target (workdir.Where — for a path that exists,
+//     what EvalSymlinks returns). Stages 2 and 3 run on this place, so `..`
+//     tricks and symlink disguises are resolved away, and whether anything
+//     exists there is asked only after them: an existing path and a missing
+//     one get the same answer, message and details included
+//  2. credential floor  the path, as named and placed, may not lie in a
 //     credential or agent-control location, nor in this server's own
 //     directories — nlink-jp/pathguard's judgement (ADR-0004, organization
 //     ADR-021 §7), its Outbound policy, since an upload leaves the machine.
@@ -30,8 +31,10 @@
 //     (deny-by-default: no roots configured → nothing is allowed); then the
 //     directory the file lies in may not be a system directory or the home
 //     directory itself, which the file policies leave out
-//  4. regular file   directories, devices, sockets, and anything else that
-//     is not a plain file are rejected
+//  4. regular file   the file must exist (EvalSymlinks; if it resolves
+//     elsewhere than it was placed, stages 2 and 3 run again on that), and
+//     directories, devices, sockets, and anything else that is not a plain
+//     file are rejected
 //  5. hidden check   no path component below the matched root may start
 //     with "." (`.git`, `.cache`, …) unless allow_hidden is set; the root
 //     itself may live under a dot directory — that prefix was explicitly
@@ -39,12 +42,11 @@
 //     refused them
 //  6. size cap       the file must not exceed the configured maximum
 //
-// ResolveNewFile, the download target, keeps the same order: resolve the
-// destination directory, the floor (pathguard's Local policy, the target as
-// named and resolved; on the name alone, then placed, when the directory
-// does not resolve), containment, and only then that it is a directory, the
-// system-directory check on it, the hidden rule and that nothing is there
-// yet.
+// ResolveNewFile, the download target, keeps the same order: place the
+// destination directory, then the floor (pathguard's Local policy, the target
+// as named and placed), containment and the system-directory check on that
+// place, and only then that it exists and is a directory, the hidden rule and
+// that nothing is there yet.
 //
 // Stages 2 and 3 are independent and both are load-bearing. Containment
 // answers "did the caller designate this?"; the floor answers "may this
@@ -218,24 +220,6 @@ func (p *Policy) outsideDest(where, raw string) *Violation {
 	}
 }
 
-// landing is where p would be: its deepest existing ancestor resolved and the
-// rest appended as named — for an existing path, its resolved form. A path
-// that does not resolve is placed by it before anything calls it missing.
-func landing(p string) string {
-	cur, tail := p, ""
-	for {
-		if r, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(r, tail)
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return p
-		}
-		tail = filepath.Join(filepath.Base(cur), tail)
-		cur = parent
-	}
-}
-
 // Roots returns the canonical allowed roots (for error details and logs).
 func (p *Policy) Roots() []string {
 	out := make([]string, len(p.roots))
@@ -278,22 +262,41 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		raw = filepath.Join(workDir, raw)
 	}
 
-	// Stage 1: canonicalize. EvalSymlinks requires the path to exist —
-	// an upload source must exist anyway, so absence is a violation here.
-	// A path the floor refuses is refused as such even when it does not
-	// resolve (pathguard follows the links itself and needs no existing
-	// file): "not found" versus "refused" would tell the caller which
-	// credential files exist.
+	// Stage 1: place the path — where it is, or would be, every link on it
+	// followed, a dangling one by its target (workdir.Where; for a path that
+	// exists, what EvalSymlinks returns). The floor, containment and the
+	// directory check are all made on this place, and only after them does it
+	// matter whether anything is there: a path that exists and one that does
+	// not get the same answer, message and details included, so no answer
+	// tells the caller which files exist.
+	where := workdir.Where(filepath.Clean(raw))
+
+	// Stage 2: the credential floor, on the path as named and as placed. It
+	// runs before containment so the refusal names the actual problem — a link
+	// out of the work directory into ~/.ssh is refused as a credential file,
+	// not merely as an uncontained one — and because the floor does not
+	// depend on containment to hold: the hole this stage closes was a work
+	// directory that containment accepted, `~/.config`, with
+	// `gcloud/credentials.db` named under it.
+	if v := p.sensitive(raw, where, workdir.UploadDenied); v != nil {
+		return "", v
+	}
+
+	// Stage 3: containment under one allowed root, then the directory the file
+	// lies in may not be a system directory or the home directory itself.
+	matchedRoot := p.matchRoot(where, false)
+	if matchedRoot == "" {
+		return "", p.outside(where, raw)
+	}
+	if v := p.deniedDir(filepath.Dir(where), where); v != nil {
+		return "", v
+	}
+
+	// Only now: an upload source must exist. If it resolves anywhere but
+	// where it was placed (it changed in between), the judgements above are
+	// made again on what it resolves to.
 	canonical, err := filepath.EvalSymlinks(filepath.Clean(raw))
 	if err != nil {
-		if v := p.sensitive(filepath.Clean(raw), filepath.Clean(raw), workdir.UploadDenied); v != nil {
-			return "", v
-		}
-		// Placed before it is called missing: outside the roots, a path that
-		// exists and one that does not get the same answer.
-		if where := landing(filepath.Clean(raw)); p.matchRoot(where, false) == "" {
-			return "", p.outside(where, raw)
-		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
 			Path:   raw,
@@ -301,27 +304,16 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 			Detail: fmt.Sprintf("cannot resolve %q: %v", raw, err),
 		}
 	}
-
-	// Stage 2: the credential floor, on the real path. It runs before
-	// containment so the refusal names the actual problem — a link out of the
-	// work directory into ~/.ssh is refused as a credential file, not merely
-	// as an uncontained one — and because the floor does not depend on
-	// containment to hold: the hole this stage closes was a work directory
-	// that containment accepted, `~/.config`, with `gcloud/credentials.db`
-	// named under it.
-	if v := p.sensitive(raw, canonical, workdir.UploadDenied); v != nil {
-		return "", v
-	}
-
-	// Stage 3: containment under one allowed root.
-	matchedRoot := p.matchRoot(canonical, false)
-	if matchedRoot == "" {
-		return "", p.outside(canonical, raw)
-	}
-	// The directory the file lies in, beneath the work directory, may not be
-	// a system directory or the home directory itself.
-	if v := p.deniedDir(filepath.Dir(canonical), canonical); v != nil {
-		return "", v
+	if canonical != where {
+		if v := p.sensitive(raw, canonical, workdir.UploadDenied); v != nil {
+			return "", v
+		}
+		if matchedRoot = p.matchRoot(canonical, false); matchedRoot == "" {
+			return "", p.outside(canonical, raw)
+		}
+		if v := p.deniedDir(filepath.Dir(canonical), canonical); v != nil {
+			return "", v
+		}
 	}
 
 	// Stage 4: regular file only.
@@ -440,21 +432,38 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 		raw = filepath.Join(workDir, raw)
 	}
 
-	// The order is Resolve's: resolve, then the credential floor, then
-	// containment, and only then anything that depends on what exists there
-	// — so an existing credential path and a missing one get the same answer,
-	// and so do an existing path outside the roots and a missing one.
+	// The order is Resolve's: place the destination (workdir.Where), then the
+	// credential floor, containment and the directory check on that place,
+	// and only then whether it exists and is a directory — so a path that
+	// exists and one that does not get the same answer.
 	named := filepath.Join(filepath.Clean(raw), base)
+	whereDir := workdir.Where(filepath.Clean(raw))
+	target := filepath.Join(whereDir, base)
+
+	// The credential floor on the write side. A destination inside a work
+	// directory the caller legitimately named can still be a credential or
+	// agent-control location — `work_dir = ~/.config` with `dest_dir =
+	// gem-agent` — and a file this server drops there is a file something
+	// else later reads as its own configuration. The target as named goes
+	// with the placed one, so a chain of links through a credential directory
+	// is seen.
+	if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
+		return "", v
+	}
+	matchedRoot := p.matchRoot(whereDir, true)
+	if matchedRoot == "" {
+		return "", p.outsideDest(whereDir, raw)
+	}
+	// And the directory it lands in may not be a system directory or the
+	// home directory itself, which the Local policy leaves out.
+	if v := p.deniedDir(whereDir, target); v != nil {
+		return "", v
+	}
+
+	// Only now: the destination must exist and be a directory. If it resolves
+	// anywhere but where it was placed, the judgements are made again.
 	canonicalDir, err := filepath.EvalSymlinks(filepath.Clean(raw))
 	if err != nil {
-		// The floor on the target as named: pathguard follows the links
-		// itself and needs no existing file.
-		if v := p.sensitive(named, named, workdir.DownloadDenied); v != nil {
-			return "", v
-		}
-		if where := landing(filepath.Clean(raw)); p.matchRoot(where, true) == "" {
-			return "", p.outsideDest(where, raw)
-		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
 			Path:   raw,
@@ -462,22 +471,17 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 			Detail: fmt.Sprintf("cannot resolve dest_dir %q: %v", raw, err),
 		}
 	}
-	target := filepath.Join(canonicalDir, base)
-
-	// The credential floor on the write side. A destination inside a work
-	// directory the caller legitimately named can still be a credential or
-	// agent-control location — `work_dir = ~/.config` with `dest_dir =
-	// gem-agent` — and a file this server drops there is a file something
-	// else later reads as its own configuration. The target as named goes
-	// with the resolved one, so a chain of links through a credential
-	// directory is seen.
-	if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
-		return "", v
-	}
-
-	matchedRoot := p.matchRoot(canonicalDir, true)
-	if matchedRoot == "" {
-		return "", p.outsideDest(canonicalDir, raw)
+	if canonicalDir != whereDir {
+		target = filepath.Join(canonicalDir, base)
+		if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
+			return "", v
+		}
+		if matchedRoot = p.matchRoot(canonicalDir, true); matchedRoot == "" {
+			return "", p.outsideDest(canonicalDir, raw)
+		}
+		if v := p.deniedDir(canonicalDir, target); v != nil {
+			return "", v
+		}
 	}
 	fi, err := os.Stat(canonicalDir)
 	if err != nil || !fi.IsDir() {
@@ -487,11 +491,6 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 			Roots:  p.Roots(),
 			Detail: fmt.Sprintf("dest_dir %q is not an existing directory", raw),
 		}
-	}
-	// And the directory it lands in may not be a system directory or the
-	// home directory itself, which the Local policy leaves out.
-	if v := p.deniedDir(canonicalDir, target); v != nil {
-		return "", v
 	}
 
 	// Hidden components below the matched root, including the new basename.

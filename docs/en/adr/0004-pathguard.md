@@ -28,17 +28,19 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
   applies the first to an upload's source (`Resolve`) and the second to a download's target
   (`ResolveNewFile`), each on the path as named as well as resolved (pathguard follows every link
   hop), and on the path as named alone when it does not resolve.
-- **Whether a path exists never changes the answer.** Both directions keep one order: resolve →
-  floor → containment → whatever depends on what exists (a directory, a regular file, nothing there
-  yet). A path that does not resolve goes to the floor and is then placed by its deepest existing
-  ancestor, `outside_allowed_roots` when that lies outside, before it is `not_found`. A missing
-  credential file and an existing one are refused alike, and so are a missing and an existing path
-  outside the work directory.
+- **Whether a path exists never changes the answer.** Both directions keep one order on one code
+  path: place the path (`workdir.Where`, the last of pathguard's forms — every link followed, a
+  dangling one by its target; for a path that exists, what EvalSymlinks returns) → floor →
+  containment → the directory check → whatever depends on what exists (does it resolve, a directory,
+  a regular file, nothing there yet). A missing credential file and an existing one are refused
+  alike, and so are a missing and an existing path outside the work directory, message and details
+  included. Two earlier versions of this fix gave a path that did not resolve a branch of its own,
+  and each left one pair of answers apart.
 - The file policies leave system places out by design, and a work directory above a system tree is
   reachable for a server running as root (`work_dir=/private` is stopped only as not writable).
   `DirDenied` applies pathguard's `CheckBeneath` to the directory the file lies in, in both
-  directions, keeping its refusals for a system directory and for the home directory itself; the
-  credential and server places it also applies are left to the file policies, which judge them by
+  directions, keeping every refusal but the credential and server places, which are left to the
+  file policies (in practice: a system directory and the home directory itself), which judge them by
   direction (applied again, its rule for a directory named like a `.env` file refused a Python venv
   called `.env`).
 - A floor refusal stays `path_denied` with `reason: sensitive_path` (what callers branch on), and

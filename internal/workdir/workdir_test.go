@@ -280,3 +280,35 @@ func TestDirDeniedAppliesTheWorkDirectoryList(t *testing.T) {
 		t.Errorf("DirDenied(the server's own directory) = %q, %q; want it left to the file policies", reason, why)
 	}
 }
+
+// Where places a path the way the floor sees it: every link followed, a
+// dangling one by its target, and for a path that exists exactly what
+// EvalSymlinks returns.
+func TestWherePlacesAPathLikeEvalSymlinks(t *testing.T) {
+	dir := realTempDir(t)
+	file := filepath.Join(dir, "f.txt")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(file, filepath.Join(dir, "l_e")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "gone", "x"), filepath.Join(dir, "l_m")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{file, filepath.Join(dir, "l_e"), dir} {
+		ev, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := Where(p); got != ev {
+			t.Errorf("Where(%s) = %s, want %s", p, got, ev)
+		}
+	}
+	if got, want := Where(filepath.Join(dir, "l_m", "y")), filepath.Join(dir, "gone", "x", "y"); got != want {
+		t.Errorf("Where(through a dangling link) = %s, want %s", got, want)
+	}
+	if got, want := Where(filepath.Join(dir, "nope", "z")), filepath.Join(dir, "nope", "z"); got != want {
+		t.Errorf("Where(missing) = %s, want %s", got, want)
+	}
+}

@@ -19,20 +19,21 @@ workspace CLAUDE.md) apply on top of these.
   machine) — and then it is the *only* root: an upload comes from inside it,
   a download lands inside it, and nothing outside it can be reached. Never
   widen it from Slack-derived values, and never add a second source of roots.
-- **Path checks run on canonicalized paths** (Abs + Clean + EvalSymlinks),
-  with the path as named passed to the floor alongside, and alone when it
-  does not resolve. Both directions keep one order — resolve → credential
-  floor → containment in the work_dir → everything that depends on what
-  exists there — so **whether a path exists never changes the answer**: a
-  path that does not resolve goes to the floor, is placed by its deepest
-  existing ancestor (`outside_allowed_roots` if that is outside), and only
-  then is `not_found`. After containment: an upload (`Policy.Resolve`) —
-  the directory's check (a system directory or the home directory itself) →
+- **Path checks run on the placed path** — where it is or would be, every
+  link followed, a dangling one by its target (`workdir.Where`; for a path
+  that exists, what EvalSymlinks returns) — with the path as named passed to
+  the floor alongside. Both directions keep one order — place → credential
+  floor → containment in the work_dir → the directory's check (a system
+  directory or the home directory itself) → everything that depends on what
+  exists there — so **whether a path exists never changes the answer**,
+  message and details included. After those: an upload (`Policy.Resolve`) —
+  exists (EvalSymlinks; judged again if it resolves elsewhere) →
   regular-file-only → hidden-component rejection (relative to the work_dir)
-  → size cap; a download (`Policy.ResolveNewFile`) — is a directory → the
-  directory's check → hidden-component rejection → nothing there yet. Do not
-  reorder checks to run on raw input strings, and do not put an
-  existence-dependent check before the floor.
+  → size cap; a download (`Policy.ResolveNewFile`) — exists and is a
+  directory → hidden-component rejection → nothing there yet. Do not reorder
+  checks to run on raw input strings, do not put an existence-dependent check
+  before the floor, and do not give a path that does not resolve a code path
+  of its own.
 - **The credential floor is applied to the file, not only to the work_dir**
   (ADR-021 §7 — the list is a floor, not a boundary). The judgement is
   nlink-jp/pathguard's (ADR-0004): `containment.Policy` consults

@@ -74,6 +74,13 @@ as gem-agent's and lagent's — and separates reads and writes (Local) from what
   it (`home_dir`). `/etc` is refused as a work directory on Linux too.
 - With no copy here, a fix to the judgement is a pathguard release and a one-line dependency update.
 
+## Amendment (2026-09-22, v0.5.1): the place is pathguard's `Where`
+
+A path's place was the last of pathguard's forms (`Forms`); the forms are de-duplicated, so when a chain of links
+comes back to an earlier spelling the last one is a middle hop, not the end. pathguard v0.3.0's `Where` returns the
+end of the walk, and the place is now that. A path whose chain of links does not end stays as given, and the floor
+refuses it. The other limits are recorded, and accepted, under "Limits" in pathguard's README.
+
 ## References
 
 - Organization ADR-021 (the work-dir contract of the file-mediated MCP servers)

@@ -184,18 +184,35 @@ func TestDirectoryRejected(t *testing.T) {
 
 func TestHiddenComponentDirect(t *testing.T) {
 	root := canonTemp(t)
-	writeFile(t, filepath.Join(root, ".env"), "SECRET=1")
+	writeFile(t, filepath.Join(root, ".notes.txt"), "draft")
 	writeFile(t, filepath.Join(root, ".git", "config"), "[core]")
-	writeFile(t, filepath.Join(root, "sub", ".ssh", "id_rsa"), "key")
+	writeFile(t, filepath.Join(root, "sub", ".cache", "data"), "cached")
 
 	p := mustPolicy(t, []string{root}, false, 0)
 	for _, f := range []string{
-		filepath.Join(root, ".env"),
+		filepath.Join(root, ".notes.txt"),
 		filepath.Join(root, ".git", "config"),
-		filepath.Join(root, "sub", ".ssh", "id_rsa"),
+		filepath.Join(root, "sub", ".cache", "data"),
 	} {
 		_, err := p.Resolve("", f)
 		_ = wantViolation(t, err, ReasonHiddenComponent)
+	}
+}
+
+// A hidden file that is also a credential — a .env, a key under a .ssh
+// directory anywhere — is refused by the credential floor first (stage 2),
+// before the hidden-component rule, and even with hidden files allowed: an
+// upload leaves the machine (pathguard's Outbound policy).
+func TestAHiddenCredentialIsRefusedAsSensitive(t *testing.T) {
+	root := canonTemp(t)
+	writeFile(t, filepath.Join(root, ".env"), "SECRET=1")
+	writeFile(t, filepath.Join(root, "sub", ".ssh", "id_rsa"), "key")
+	for _, allowHidden := range []bool{false, true} {
+		p := mustPolicy(t, []string{root}, allowHidden, 0)
+		for _, f := range []string{filepath.Join(root, ".env"), filepath.Join(root, "sub", ".ssh", "id_rsa")} {
+			_, err := p.Resolve("", f)
+			_ = wantViolation(t, err, ReasonSensitivePath)
+		}
 	}
 }
 
@@ -203,9 +220,9 @@ func TestHiddenViaSymlinkResolution(t *testing.T) {
 	// A benign-looking name that resolves to a dotfile must be caught:
 	// the hidden check runs on the canonical (EvalSymlinks-resolved) path.
 	root := canonTemp(t)
-	writeFile(t, filepath.Join(root, ".env"), "SECRET=1")
+	writeFile(t, filepath.Join(root, ".notes.txt"), "draft")
 	link := filepath.Join(root, "safe.txt")
-	if err := os.Symlink(filepath.Join(root, ".env"), link); err != nil {
+	if err := os.Symlink(filepath.Join(root, ".notes.txt"), link); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
 
@@ -350,7 +367,8 @@ func TestResolveNewFileDenials(t *testing.T) {
 		{"missing dest dir", "", filepath.Join(root, "nope"), "f.txt", ReasonNotFound},
 		{"relative without workspace", "", "in", "f.txt", ReasonNotAbsolute},
 		{"hidden dest dir", "", filepath.Join(root, ".hidden-sub"), "f.txt", ReasonHiddenComponent},
-		{"hidden filename", "", root, ".env", ReasonHiddenComponent},
+		{"hidden filename", "", root, ".notes", ReasonHiddenComponent},
+		{".env filename", "", root, ".env", ReasonSensitivePath},
 		{"traversal filename becomes base", "", root, "../taken.txt", ReasonAlreadyExists},
 		{"existing target", "", root, "taken.txt", ReasonAlreadyExists},
 		{"dangling symlink target occupied", "", root, "dangling", ReasonAlreadyExists},

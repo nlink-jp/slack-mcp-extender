@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -138,87 +137,66 @@ func TestResolveRequiresAWorkDirectory(t *testing.T) {
 	}
 }
 
-// --- the list itself, at the file level ------------------------------------
+// --- the floor, at the file level ------------------------------------------
 //
-// DeniedPath is the floor applied to every path a call names inside an
-// accepted work directory (ADR-021 §7). The scenario it was built for —
-// work_dir = ~/.config with gcloud/credentials.db under it — is pinned at the
-// layer an agent reaches, in internal/proxy/sensitive_path_test.go. What was
-// not pinned anywhere is the *list*: only .config/gcloud and this server's own
-// state directory were ever exercised for a file, so an entry deleted from
-// sensitiveHomeTrees would have taken no test with it.
-//
-// The home directory is redirected: writing a fixture into the operator's real
-// ~/.ssh to prove a refusal would be the test damaging what it protects.
+// The list is pathguard's (and the runtimes'), tested there. What this server
+// owns is which policy each direction gets: an upload leaves the machine
+// (Outbound), a download stays (Local). The home directory is redirected:
+// writing a fixture into the operator's real ~/.ssh to prove a refusal would
+// be the test damaging what it protects.
 
-// credentialTrees is the list this test holds the implementation to, written
-// out rather than read from sensitiveHomeTrees. Iterating the implementation's
-// own slice looked like a table over every entry and was not one: an entry
-// deleted from the slice simply stopped being visited, so dropping ".aws" or
-// "Library/Keychains" left the suite green. Measured, not assumed — that
-// version of this test passed both mutations.
-var credentialTrees = []string{
-	".ssh", ".aws", ".gnupg", ".config/gcloud", ".config/gem-agent",
-	".config/lagent", ".claude", ".codex", "Library/Keychains",
-}
-
-// TestCredentialListHasNotDrifted is the half that makes deletion fail: the
-// implementation's list must be exactly the list above. An entry added without
-// a refusal test, or removed in passing, stops here.
-func TestCredentialListHasNotDrifted(t *testing.T) {
-	got := append([]string(nil), sensitiveHomeTrees...)
-	want := append([]string(nil), credentialTrees...)
-	sort.Strings(got)
-	sort.Strings(want)
-	if len(got) != len(want) {
-		t.Fatalf("sensitiveHomeTrees has %d entries, the test knows %d:\n  impl: %v\n  test: %v",
-			len(got), len(want), got, want)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("entry %d: impl %q, test %q — update credentialTrees and give the new tree a refusal case",
-				i, got[i], want[i])
+// A file under each credential tree is refused both ways, and the reason
+// names the tree.
+func TestEveryCredentialTreeIsRefusedForUploadAndDownload(t *testing.T) {
+	home := realTempDir(t)
+	t.Setenv("HOME", home)
+	for _, rel := range []string{".ssh", ".aws", ".gnupg", ".config/gcloud", ".config/gem-agent",
+		".config/lagent", ".claude", ".codex", "Library/Keychains", ".kube", ".config/gh"} {
+		file := filepath.Join(home, rel, "secret")
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("credential"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for name, why := range map[string]string{
+			"upload":   UploadDenied(file, file, nil),
+			"download": DownloadDenied(file, file, nil),
+		} {
+			if why == "" || !strings.Contains(why, rel) {
+				t.Errorf("%s of ~/%s: reason %q, want a refusal naming the tree", name, rel, why)
+			}
 		}
 	}
 }
 
-// TestDeniedPathRefusesEveryEntryOnTheCredentialList gives each tree a file
-// under it, which is the upload case. A tree that does not exist yet is not
-// interesting: the floor compares paths and never stats them.
-func TestDeniedPathRefusesEveryEntryOnTheCredentialList(t *testing.T) {
+// An upload leaves the machine, so a credential name is refused wherever it
+// sits; a download written under that name elsewhere is ordinary.
+func TestAnUploadIsJudgedAsLeavingTheMachine(t *testing.T) {
 	home := realTempDir(t)
 	t.Setenv("HOME", home)
-
-	for _, rel := range credentialTrees {
-		t.Run(rel, func(t *testing.T) {
-			file := filepath.Join(home, rel, "secret")
-			if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(file, []byte("credential"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			why := DeniedPath(file, file, nil)
-			if why == "" {
-				t.Errorf("DeniedPath(%q) allowed a file under ~/%s", file, rel)
-				return
-			}
-			// The reason has to name the tree, or an operator reading the
-			// refusal cannot tell which rule they hit.
-			if !strings.Contains(why, rel) {
-				t.Errorf("reason %q does not name ~/%s", why, rel)
-			}
-		})
+	work := realTempDir(t)
+	for _, rel := range []string{"id_rsa", "evidence/home/bob/.ssh/known_hosts", "service-account.json"} {
+		file := filepath.Join(work, rel)
+		if why := UploadDenied(file, file, nil); why == "" {
+			t.Errorf("UploadDenied(%s) = \"\", want a refusal", rel)
+		}
+		if why := DownloadDenied(file, file, nil); why != "" {
+			t.Errorf("DownloadDenied(%s) = %q, want accepted", rel, why)
+		}
+	}
+	env := filepath.Join(work, ".env")
+	if UploadDenied(env, env, nil) == "" || DownloadDenied(env, env, nil) == "" {
+		t.Error("a .env file was not refused both ways")
 	}
 }
 
 // The must-pass row. A floor that refused everything under the home directory
 // would satisfy every assertion above while breaking ordinary use — and the
 // work directory a caller passes is routinely somewhere under $HOME.
-func TestDeniedPathLeavesAnOrdinaryHomePathAlone(t *testing.T) {
+func TestAnOrdinaryHomePathIsLeftAlone(t *testing.T) {
 	home := realTempDir(t)
 	t.Setenv("HOME", home)
-
 	file := filepath.Join(home, "work", "report.txt")
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
@@ -226,7 +204,25 @@ func TestDeniedPathLeavesAnOrdinaryHomePathAlone(t *testing.T) {
 	if err := os.WriteFile(file, []byte("nothing secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if why := DeniedPath(file, file, nil); why != "" {
-		t.Errorf("DeniedPath(%q) refused an ordinary file: %s", file, why)
+	if why := UploadDenied(file, file, nil); why != "" {
+		t.Errorf("UploadDenied(%q) refused an ordinary file: %s", file, why)
+	}
+	if why := DownloadDenied(file, file, nil); why != "" {
+		t.Errorf("DownloadDenied(%q) refused an ordinary file: %s", file, why)
+	}
+}
+
+// The server's own directories are refused as a file location in both
+// directions, and a work_dir_denied carries the reason.
+func TestServerDirectoriesAreRefusedEverywhere(t *testing.T) {
+	own := realTempDir(t)
+	tokens := filepath.Join(own, "tokens.json")
+	if UploadDenied(tokens, tokens, []string{own}) == "" || DownloadDenied(tokens, tokens, []string{own}) == "" {
+		t.Error("the server's state directory was not refused both ways")
+	}
+	_, err := Validate(own, []string{own})
+	var we *Error
+	if !errors.As(err, &we) || we.Details["reason"] != "server_dir" {
+		t.Errorf("Validate(server dir) = %v, want work_dir_denied with reason server_dir", err)
 	}
 }

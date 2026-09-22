@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Path judgement moved to [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)**
+  (ADR-0004). `internal/workdir` is now an adapter onto it, with the same call
+  shape; places are compared by file identity and by names folded the way the
+  disk folds them, instead of by name. `go.mod` requires that one module of this
+  organization, which itself has no dependency; CLAUDE.md says so.
+- Uploads are judged as files that **leave the machine** (pathguard's Outbound
+  policy): a file named as a secret (`id_rsa`, `credentials.json`,
+  `*service-account*.json`) or lying in a credential directory is refused
+  wherever it sits. Downloads are judged by the Local policy.
+- The real places under your home from the list gem-agent and lagent use are
+  refused as `work_dir`, upload source and download target (newly `~/.kube`,
+  `~/.config/gh`, `~/.azure`, `~/.terraform.d`, `~/.gemini`,
+  `~/.config/mcp-bridge`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
+  `~/.git-credentials`, `~/.vault-token`, `~/.docker/config.json`,
+  `~/.claude.json`, `~/.bash_history`, `~/.zsh_history`), under every spelling,
+  and wherever a link directly inside one of those directories points. When
+  `$HOME` names another directory than the account's home, both are protected.
+  When the home directory cannot be determined, every call is refused.
+- **`.env` is refused** as `sensitive_path`, even with `allow_hidden=true` (it
+  could be uploaded then); its templates (`.env.example` and the like) are not.
+- `work_dir_denied` carries `reason` in its `details`, and the details now reach
+  the caller.
+
 ## [0.4.1] - 2026-09-21
 
 ### Fixed

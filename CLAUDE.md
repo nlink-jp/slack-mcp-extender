@@ -24,13 +24,18 @@ workspace CLAUDE.md) apply on top of these.
   hidden-component rejection (relative to the work_dir) → size cap. Do not
   reorder checks to run on raw input strings.
 - **The credential floor is applied to the file, not only to the work_dir**
-  (ADR-021 §7 — the list is a floor, not a boundary). `workdir.DeniedPath` is
-  the single list; `containment.Policy` consults it for the resolved upload
-  source and for the joined download target. An accepted work directory does
-  not make its contents safe to send: never let a new tool reach a path
-  without going through `Policy.Resolve` / `Policy.ResolveNewFile`, and never
-  introduce a second copy of the list.
-- **Zero external Go dependencies** — standard library only.
+  (ADR-021 §7 — the list is a floor, not a boundary). The judgement is
+  nlink-jp/pathguard's (ADR-0004): `containment.Policy` consults
+  `workdir.UploadDenied` (Outbound policy — an upload leaves the machine, so a
+  credential name is refused wherever it sits) for the resolved upload source
+  and `workdir.DownloadDenied` (Local policy) for the joined download target.
+  An accepted work directory does not make its contents safe to send: never
+  let a new tool reach a path without going through `Policy.Resolve` /
+  `Policy.ResolveNewFile`, and never introduce a list or a name comparison of
+  its own.
+- **No third-party Go dependencies** — the standard library and modules of
+  the nlink-jp organization that hold the same rule (today nlink-jp/pathguard)
+  only.
 - **swrite stays untouched**: bot-identity uploads belong to swrite, not here.
 
 ## Secrets

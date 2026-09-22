@@ -53,17 +53,23 @@ agent names on every call**:
   from Slack-derived values
 
 **The credential list is also applied to the file, not only to the
-directory.** That list (`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.gnupg`,
-`~/Library/Keychains`, `~/.claude`, `~/.codex`,
-`~/.config/{gem-agent,lagent}`, this server's own directories) is a floor
-rather than a boundary, and a floor tested only against `work_dir` is stepped
+directory.** That list — the credential and agent-control places under your
+home that gem-agent and lagent use (`~/.ssh`, `~/.aws`, `~/.kube`,
+`~/.config/gcloud`, `~/.config/gh`, `~/.gnupg`, `~/.netrc`,
+`~/Library/Keychains`, `~/.claude`, `~/.codex`, `~/.config/{gem-agent,lagent}`,
+…), any `.env`, and this server's own directories, compared by file identity
+and by folded name ([nlink-jp/pathguard](https://github.com/nlink-jp/pathguard))
+— is a floor rather than a boundary, and a floor tested only against `work_dir` is stepped
 over by naming the directory just above a credential one: `~/.config` is not
 itself on the list, so it passed as a work directory, and a call naming
 `gcloud/credentials.db` under it was never looked at. Every caller-named path
 is now checked against the same list at the point of use, with symlinks
 resolved first so an innocuous-looking link cannot stand in for its target,
 and in both directions: an upload whose real path lands in one of those
-locations is refused, and so is a download destination that would write into
+locations is refused — and because an upload leaves the machine, so is one
+named as a secret (`id_rsa`, `credentials.json`, `*service-account*.json`) or
+lying in a credential directory wherever it sits — and so is a download
+destination that would write into
 one. The refusal is a structured `path_denied` error with
 `reason: sensitive_path` naming the path, it is written to the audit log like
 any other denial, and ordinary files inside an ordinary work_dir are

@@ -1,6 +1,6 @@
 # ADR-0003: The containment boundary is a per-call `work_dir`; `allowed_roots` is removed
 
-> Status: Accepted — 2026-09-13. Amends [ADR-0002](0002-symmetric-download-with-write-containment.md) (symmetric download with write containment).
+> Status: Accepted — 2026-09-13; its judgement of the refused places is replaced by [ADR-0004](0004-pathguard.md) (nlink-jp/pathguard). Amends [ADR-0002](0002-symmetric-download-with-write-containment.md) (symmetric download with write containment).
 
 ## Context
 

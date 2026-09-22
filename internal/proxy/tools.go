@@ -74,7 +74,7 @@ func (it *InjectedTools) policyFor(arg string, meta map[string]json.RawMessage) 
 	if err != nil {
 		var we *workdir.Error
 		if errors.As(err, &we) {
-			return "", nil, errorResult(we.Code, we.Message, nil)
+			return "", nil, errorResult(we.Code, we.Message, we.Details)
 		}
 		return "", nil, errorResult("internal_error", err.Error(), nil)
 	}

@@ -16,7 +16,8 @@ File access is confined to the `work_dir` each call names (ADR-0003)
 hidden-component rejection, size cap) because the tool is otherwise an
 exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
-full new build with no governance machinery. Zero external dependencies.
+full new build with no governance machinery. No third-party dependencies
+(only nlink-jp/pathguard, itself standard library only).
 
 **Status: released** (v0.1.0). Proxy, OAuth login, injected tools,
 containment, interactive `init`; ~90% coverage per package;
@@ -41,7 +42,8 @@ runs transparency + containment-denial tests (no Slack side effects).
 Additionally set `SLACK_MCP_EXTENDER_E2E_CHANNEL` (channel ID) to run the
 posting test (real root + thread attachments).
 
-Go 1.25+. **No external dependencies** — standard library only.
+Go 1.25+. **No third-party dependencies** — the standard library and
+nlink-jp/pathguard only.
 Module path: `github.com/nlink-jp/slack-mcp-extender`.
 
 ## Structure
@@ -108,11 +110,14 @@ annotations, outputSchema, nextCursor) survive byte-for-byte.
   denied tree, so it passed `workdir.Validate`, and `gcloud/credentials.db`
   under it reached `ext_file_upload` unexamined. The same holds for
   `~/Library` above `Library/Keychains`, and for the parent of the state
-  directory above `tokens.json`. `workdir.DeniedPath` exports the one list
-  (do not grow a second one) and the containment policy applies it as stage 2
+  directory above `tokens.json`. The list and its comparison are
+  nlink-jp/pathguard's (ADR-0004; do not grow a second one): the containment
+  policy applies `workdir.UploadDenied` (Outbound policy) as stage 2
   of `Resolve` — ahead of containment, so the refusal names the credential
-  rather than the root it escaped — and to the joined target in
-  `ResolveNewFile`, so a download cannot write into one either. Reason code:
+  rather than the root it escaped — and `workdir.DownloadDenied` (Local
+  policy) to the joined target in `ResolveNewFile`, so a download cannot write
+  into one either. A `.env`, or a key under a `.ssh` directory anywhere, is
+  refused at this stage as `sensitive_path`, before the hidden-component rule. Reason code:
   `sensitive_path`. Two of the cases are only reachable through this stage:
   a symlink whose target is sensitive but still inside the work_dir, and a
   destination path inside an accepted work_dir. Tests:

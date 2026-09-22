@@ -123,15 +123,16 @@ func NewPolicy(roots, serverDirs []string, allowHidden bool, maxSize int64) (*Po
 }
 
 // sensitive builds the stage-2 refusal for a path on the credential floor, or
-// returns nil. raw is the caller's spelling and resolved the real path; both
-// are compared against both spellings of every list entry, because a
-// blacklisted directory may itself be a symlink and comparing one spelling
-// only walks past the list (organization ADR-021 §7).
+// returns nil. raw is the caller's spelling and resolved the real path, and
+// deny is the direction's judgement: workdir.UploadDenied for a file that
+// leaves the machine (pathguard's Outbound policy), workdir.DownloadDenied for
+// one written here (the Local policy). Both compare by file identity and by
+// folded name, links followed (organization ADR-021 §7).
 //
 // The wording of the reason comes from internal/workdir, so a caller reads the
 // same sentence whether the refused path arrived as work_dir or as file.
-func (p *Policy) sensitive(raw, resolved string) *Violation {
-	why := workdir.DeniedPath(raw, resolved, p.serverDirs)
+func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string, serverDirs []string) string) *Violation {
+	why := deny(raw, resolved, p.serverDirs)
 	if why == "" {
 		return nil
 	}
@@ -204,7 +205,7 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 	// containment to hold: the hole this stage closes was a work directory
 	// that containment accepted, `~/.config`, with `gcloud/credentials.db`
 	// named under it.
-	if v := p.sensitive(raw, canonical); v != nil {
+	if v := p.sensitive(raw, canonical, workdir.UploadDenied); v != nil {
 		return "", v
 	}
 
@@ -387,7 +388,7 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 	// else later reads as its own configuration. canonicalDir is already
 	// symlink-resolved and base is a single sanitized component, so the
 	// target needs no second spelling.
-	if v := p.sensitive(target, target); v != nil {
+	if v := p.sensitive(target, target, workdir.DownloadDenied); v != nil {
 		return "", v
 	}
 

@@ -1,6 +1,6 @@
 # ADR-0003: 封じ込め境界は呼び出しごとの `work_dir`、`allowed_roots` は廃止
 
-> Status: Accepted — 2026-09-13。[ADR-0002](0002-symmetric-download-with-write-containment.ja.md)（対称ダウンロードと書き込み封じ込め）を改定。
+> Status: Accepted — 2026-09-13。拒む場所の判定は [ADR-0004](0004-pathguard.ja.md)（nlink-jp/pathguard）で置き換えた。[ADR-0002](0002-symmetric-download-with-write-containment.ja.md)（対称ダウンロードと書き込み封じ込め）を改定。
 
 ## Context
 

@@ -58,6 +58,10 @@ func TestWorkDirRefusesServerStateDir(t *testing.T) {
 		t.Fatalf("work_dir = the server's own state directory was accepted: isError=%v %v",
 			isErr, payload)
 	}
+	// The reason reaches the caller, so it can tell which rule it hit.
+	if details, _ := payload["details"].(map[string]any); details["reason"] != "server_dir" {
+		t.Errorf("details = %v, want reason server_dir", payload["details"])
+	}
 }
 
 // A subdirectory is the obvious way around a check that only compares the

@@ -269,4 +269,14 @@ func TestDirDeniedAppliesTheWorkDirectoryList(t *testing.T) {
 	if reason, why := DirDenied(realTempDir(t), nil); why != "" {
 		t.Errorf("DirDenied(an ordinary directory) = %q, %q; want accepted", reason, why)
 	}
+	// The places the file policies judge by their own rules are left to them.
+	for _, d := range []string{filepath.Join(home, ".ssh"), filepath.Join(realTempDir(t), ".env")} {
+		if reason, why := DirDenied(d, nil); why != "" {
+			t.Errorf("DirDenied(%s) = %q, %q; want it left to the file policies", d, reason, why)
+		}
+	}
+	own := realTempDir(t)
+	if reason, why := DirDenied(own, []string{own}); why != "" {
+		t.Errorf("DirDenied(the server's own directory) = %q, %q; want it left to the file policies", reason, why)
+	}
 }

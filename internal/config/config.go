@@ -262,8 +262,11 @@ func (c *Config) ServerOwnedDirs() []string {
 	var dirs []string
 	add := func(d string) {
 		if abs, err := filepath.Abs(d); err == nil {
-			dirs = append(dirs, abs)
+			d = abs
 		}
+		// Kept relative when that fails: pathguard then refuses every call
+		// rather than protect nothing.
+		dirs = append(dirs, d)
 	}
 	if c.StateDir != "" {
 		add(c.StateDir)

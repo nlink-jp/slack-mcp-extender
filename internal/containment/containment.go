@@ -15,8 +15,9 @@
 //
 //  1. canonicalize   Abs + Clean + EvalSymlinks — all later checks run on
 //     the real path, so `..` tricks and symlink disguises are resolved away.
-//     A path that does not resolve is still put to the floor first, so a
-//     missing credential file is refused, not reported missing
+//     A path that does not resolve is put to the floor, then placed by its
+//     deepest existing ancestor (outside the roots it is outside), and only
+//     then called missing: whether a path exists never changes the answer
 //  2. credential floor  the path, as named and resolved, may not lie in a
 //     credential or agent-control location, nor in this server's own
 //     directories — nlink-jp/pathguard's judgement (ADR-0004, organization
@@ -27,8 +28,8 @@
 //     a file under an accepted parent
 //  3. containment    the canonical path must be under one allowed root
 //     (deny-by-default: no roots configured → nothing is allowed); then the
-//     directory the file lies in may not be one no work directory may be (a
-//     system tree, which the file policies leave out)
+//     directory the file lies in may not be a system directory or the home
+//     directory itself, which the file policies leave out
 //  4. regular file   directories, devices, sockets, and anything else that
 //     is not a plain file are rejected
 //  5. hidden check   no path component below the matched root may start
@@ -38,11 +39,12 @@
 //     refused them
 //  6. size cap       the file must not exceed the configured maximum
 //
-// ResolveNewFile, the download target, resolves the destination directory,
-// checks containment, then the floor (pathguard's Local policy, the target
-// as named and resolved; on the name alone when the directory does not
-// resolve) and the system-tree check on the directory, then the hidden rule
-// and that nothing is there yet.
+// ResolveNewFile, the download target, keeps the same order: resolve the
+// destination directory, the floor (pathguard's Local policy, the target as
+// named and resolved; on the name alone, then placed, when the directory
+// does not resolve), containment, and only then that it is a directory, the
+// system-directory check on it, the hidden rule and that nothing is there
+// yet.
 //
 // Stages 2 and 3 are independent and both are load-bearing. Containment
 // answers "did the caller designate this?"; the floor answers "may this
@@ -82,7 +84,7 @@ type Violation struct {
 	Roots  []string // the canonical allowed roots (for the error details)
 	Detail string   // human-readable specifics
 	// Floor is pathguard's reason for a ReasonSensitivePath refusal
-	// (sensitive_path, server_dir, system_dir, unresolvable_path,
+	// (sensitive_path, server_dir, system_dir, home_dir, unresolvable_path,
 	// home_unknown, unconfigured) — the same vocabulary work_dir_denied
 	// carries — and empty for every other reason.
 	Floor string
@@ -165,8 +167,8 @@ func (p *Policy) sensitive(raw, resolved string, deny func(raw, resolved string,
 }
 
 // deniedDir builds the refusal for a file whose directory, beneath the work
-// directory, is one no work directory may be (workdir.DirDenied: a system
-// tree), or returns nil.
+// directory, is a system directory or the home directory itself
+// (workdir.DirDenied), or returns nil.
 func (p *Policy) deniedDir(dir, path string) *Violation {
 	reason, why := workdir.DirDenied(dir, p.serverDirs)
 	if why == "" {
@@ -178,6 +180,59 @@ func (p *Policy) deniedDir(dir, path string) *Violation {
 		Roots:  p.Roots(),
 		Detail: why,
 		Floor:  reason,
+	}
+}
+
+// matchRoot returns the allowed root path lies under, or "". A file must lie
+// strictly below its root; a destination directory may be the root itself
+// (allowRoot).
+func (p *Policy) matchRoot(path string, allowRoot bool) string {
+	for _, root := range p.roots {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if rel == "." && !allowRoot {
+			continue
+		}
+		return root
+	}
+	return ""
+}
+
+func (p *Policy) outside(where, raw string) *Violation {
+	return &Violation{
+		Reason: ReasonOutsideRoots,
+		Path:   where,
+		Roots:  p.Roots(),
+		Detail: fmt.Sprintf("%q resolves outside every allowed root", raw),
+	}
+}
+
+func (p *Policy) outsideDest(where, raw string) *Violation {
+	return &Violation{
+		Reason: ReasonOutsideRoots,
+		Path:   where,
+		Roots:  p.Roots(),
+		Detail: fmt.Sprintf("dest_dir %q resolves outside every allowed root", raw),
+	}
+}
+
+// landing is where p would be: its deepest existing ancestor resolved and the
+// rest appended as named — for an existing path, its resolved form. A path
+// that does not resolve is placed by it before anything calls it missing.
+func landing(p string) string {
+	cur, tail := p, ""
+	for {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, tail)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
 	}
 }
 
@@ -234,6 +289,11 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 		if v := p.sensitive(filepath.Clean(raw), filepath.Clean(raw), workdir.UploadDenied); v != nil {
 			return "", v
 		}
+		// Placed before it is called missing: outside the roots, a path that
+		// exists and one that does not get the same answer.
+		if where := landing(filepath.Clean(raw)); p.matchRoot(where, false) == "" {
+			return "", p.outside(where, raw)
+		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
 			Path:   raw,
@@ -254,23 +314,12 @@ func (p *Policy) Resolve(workDir, file string) (string, error) {
 	}
 
 	// Stage 3: containment under one allowed root.
-	matchedRoot := ""
-	for _, root := range p.roots {
-		if rel, err := filepath.Rel(root, canonical); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "." {
-			matchedRoot = root
-			break
-		}
-	}
+	matchedRoot := p.matchRoot(canonical, false)
 	if matchedRoot == "" {
-		return "", &Violation{
-			Reason: ReasonOutsideRoots,
-			Path:   canonical,
-			Roots:  p.Roots(),
-			Detail: fmt.Sprintf("%q resolves outside every allowed root", raw),
-		}
+		return "", p.outside(canonical, raw)
 	}
 	// The directory the file lies in, beneath the work directory, may not be
-	// one no work directory may be (a system tree).
+	// a system directory or the home directory itself.
 	if v := p.deniedDir(filepath.Dir(canonical), canonical); v != nil {
 		return "", v
 	}
@@ -391,18 +440,20 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 		raw = filepath.Join(workDir, raw)
 	}
 
-	// The target as named: the floor judges it together with the resolved
-	// one below, so a chain of links through a credential directory is seen,
-	// and alone when the directory does not resolve, so a missing directory
-	// is not told apart from a refused one.
+	// The order is Resolve's: resolve, then the credential floor, then
+	// containment, and only then anything that depends on what exists there
+	// — so an existing credential path and a missing one get the same answer,
+	// and so do an existing path outside the roots and a missing one.
 	named := filepath.Join(filepath.Clean(raw), base)
-
-	// The parent directory must exist so it can be canonicalized — all
-	// later checks run on the real path.
 	canonicalDir, err := filepath.EvalSymlinks(filepath.Clean(raw))
 	if err != nil {
+		// The floor on the target as named: pathguard follows the links
+		// itself and needs no existing file.
 		if v := p.sensitive(named, named, workdir.DownloadDenied); v != nil {
 			return "", v
+		}
+		if where := landing(filepath.Clean(raw)); p.matchRoot(where, true) == "" {
+			return "", p.outsideDest(where, raw)
 		}
 		return "", &Violation{
 			Reason: ReasonNotFound,
@@ -410,6 +461,23 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 			Roots:  p.Roots(),
 			Detail: fmt.Sprintf("cannot resolve dest_dir %q: %v", raw, err),
 		}
+	}
+	target := filepath.Join(canonicalDir, base)
+
+	// The credential floor on the write side. A destination inside a work
+	// directory the caller legitimately named can still be a credential or
+	// agent-control location — `work_dir = ~/.config` with `dest_dir =
+	// gem-agent` — and a file this server drops there is a file something
+	// else later reads as its own configuration. The target as named goes
+	// with the resolved one, so a chain of links through a credential
+	// directory is seen.
+	if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
+		return "", v
+	}
+
+	matchedRoot := p.matchRoot(canonicalDir, true)
+	if matchedRoot == "" {
+		return "", p.outsideDest(canonicalDir, raw)
 	}
 	fi, err := os.Stat(canonicalDir)
 	if err != nil || !fi.IsDir() {
@@ -420,37 +488,8 @@ func (p *Policy) ResolveNewFile(workDir, destDir, filename string) (string, erro
 			Detail: fmt.Sprintf("dest_dir %q is not an existing directory", raw),
 		}
 	}
-
-	matchedRoot := ""
-	for _, root := range p.roots {
-		if rel, err := filepath.Rel(root, canonicalDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			matchedRoot = root
-			break
-		}
-	}
-	if matchedRoot == "" {
-		return "", &Violation{
-			Reason: ReasonOutsideRoots,
-			Path:   canonicalDir,
-			Roots:  p.Roots(),
-			Detail: fmt.Sprintf("dest_dir %q resolves outside every allowed root", raw),
-		}
-	}
-
-	target := filepath.Join(canonicalDir, base)
-
-	// The credential floor on the write side. A destination inside a work
-	// directory the caller legitimately named can still be a credential or
-	// agent-control location — `work_dir = ~/.config` with `dest_dir =
-	// gem-agent` — and a file this server drops there is a file something
-	// else later reads as its own configuration. canonicalDir is already
-	// symlink-resolved and base is a single sanitized component; the target
-	// as named goes too, for the links on the way.
-	if v := p.sensitive(named, target, workdir.DownloadDenied); v != nil {
-		return "", v
-	}
-	// And the directory it lands in may not be one no work directory may be
-	// (a system tree), which the Local policy leaves out.
+	// And the directory it lands in may not be a system directory or the
+	// home directory itself, which the Local policy leaves out.
 	if v := p.deniedDir(canonicalDir, target); v != nil {
 		return "", v
 	}

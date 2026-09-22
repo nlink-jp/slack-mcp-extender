@@ -13,9 +13,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GCLOUD/credentials.db` under `work_dir=~/.config`, and `WS.STATE/tokens.json`
   under the parent of the state directory (the OAuth tokens, sent to Slack)
   were accepted. Places are now compared by file identity and by folded name.
-- A credential file that does not exist was reported `not_found` while one
-  that exists was refused, which told the caller which secrets are there. It
-  is refused either way now.
+- Whether a path exists no longer changes the answer. An upload of a
+  credential file that does not exist was `not_found` while one that exists
+  was refused, which told the caller which secrets are there; and a path
+  outside the work directory was `not_found` when missing and
+  `outside_allowed_roots` when present, in both directions. Both are now
+  answered alike.
 - A download whose directory is reached through a chain of links passing
   through a credential directory is refused: only the end of the chain was
   judged.
@@ -44,18 +47,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   protected under both; this server's own directories follow `$HOME`, as they
   did before. When the home directory cannot be determined, every call is
   refused. `/etc` is refused as a work directory on Linux too.
-- The directory a file is taken from or lands in is judged by the list of
-  what may not be a work directory: a file under a system location is refused
-  in both directions (reachable only for a server running as root, through a
-  `work_dir` above a system tree), and so is a file directly in your home
-  directory reached through a `work_dir` above it.
+- The directory a file is taken from or lands in may not be a system
+  directory (reachable only for a server running as root, through a
+  `work_dir` above one) or your home directory itself (a file directly in it,
+  reached through a `work_dir` above it), in both directions.
 - A path that cannot be resolved — a chain of links that does not end, a NUL
-  byte, over 4096 bytes — is refused.
+  byte, over 4096 bytes — is refused as `sensitive_path` with `floor_reason`
+  `unresolvable_path`, where it was `not_found`.
 - **`.env` is refused** as `sensitive_path`, even with `allow_hidden=true` (it
   could be uploaded then); its templates (`.env.example` and the like) are not.
 - `path_denied` for a floor refusal carries pathguard's reason in
   `details.floor_reason` (`sensitive_path`, `server_dir`, `system_dir`,
-  `unresolvable_path`, `home_unknown`, `unconfigured`); `reason` stays
+  `home_dir`, `unresolvable_path`, `home_unknown`, `unconfigured`); `reason` stays
   `sensitive_path`. A symlink to a file under `/etc` is refused as
   `outside_allowed_roots` rather than `sensitive_path`.
 - `work_dir_denied` carries `reason` in its `details`, and the details now reach

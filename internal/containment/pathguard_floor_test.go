@@ -1,6 +1,8 @@
 package containment
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -115,4 +117,101 @@ func TestADownloadThroughALinkChainInACredentialDirectoryIsRefused(t *testing.T)
 	if _, err := p.ResolveNewFile(work, "end", "x.txt"); err != nil {
 		t.Errorf("the same directory named directly: %v, want accepted", err)
 	}
+}
+
+// Whether a path exists is never the difference between two answers: an
+// existing credential path and a missing one are refused alike, and so are an
+// existing path outside the roots and a missing one — in both directions.
+func TestExistenceIsNotRevealed(t *testing.T) {
+	home := canonTemp(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	writeFile(t, filepath.Join(work, "gcloud", "credentials.db"), "secret")
+	writeFile(t, filepath.Join(work, "gh", "hosts.yml"), "secret")
+	writeFile(t, filepath.Join(home, ".aws", "credentials"), "secret")
+	other := canonTemp(t)
+	writeFile(t, filepath.Join(other, "b.txt"), "x")
+	p := mustPolicy(t, []string{work}, true, 0)
+
+	type answer struct{ reason, floor string }
+	got := func(err error) answer {
+		var v *Violation
+		if !errors.As(err, &v) {
+			return answer{"accepted or " + fmt.Sprint(err), ""}
+		}
+		return answer{v.Reason, v.Floor}
+	}
+	for _, c := range []struct {
+		name            string
+		exists, missing func() error
+	}{
+		{"upload of a credential file",
+			func() error { return mustFail(p.Resolve(work, "gcloud/credentials.db")) },
+			func() error { return mustFail(p.Resolve(work, "gcloud/other.db")) }},
+		{"upload outside the root",
+			func() error { return mustFail(p.Resolve(work, filepath.Join(other, "b.txt"))) },
+			func() error { return mustFail(p.Resolve(work, filepath.Join(other, "c.txt"))) }},
+		{"download into a credential file named as dest_dir",
+			func() error { return mustFail(p.ResolveNewFile(work, "gh/hosts.yml", "x.txt")) },
+			func() error { return mustFail(p.ResolveNewFile(work, "gh/other.yml", "x.txt")) }},
+		{"download into a credential path outside the root",
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(home, ".aws", "credentials"), "x.txt")) },
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(home, ".aws", "config"), "x.txt")) }},
+		{"download into a credential directory outside the root",
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(home, ".aws"), "x.txt")) },
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(home, ".kube"), "x.txt")) }},
+		{"download outside the root",
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(other, "b.txt"), "x.txt")) },
+			func() error { return mustFail(p.ResolveNewFile(work, filepath.Join(other, "sub"), "x.txt")) }},
+	} {
+		e, m := got(c.exists()), got(c.missing())
+		if e != m {
+			t.Errorf("%s: existing → %v, missing → %v; the answer tells them apart", c.name, e, m)
+		}
+		if e.reason == ReasonNotFound {
+			t.Errorf("%s: %v, want a refusal", c.name, e)
+		}
+	}
+}
+
+// An upload through a chain of links that passes through a credential
+// directory is refused, although its end is an ordinary file inside the work
+// directory: the floor gets the path as named, not only the resolved end.
+func TestAnUploadThroughALinkChainInACredentialDirectoryIsRefused(t *testing.T) {
+	home := canonTemp(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	writeFile(t, filepath.Join(work, "end", "x.txt"), "x")
+	if err := os.MkdirAll(filepath.Join(work, "gcloud", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "..", "end"), filepath.Join(work, "gcloud", "sub", "hop")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join("gcloud", "sub", "hop"), filepath.Join(work, "out")); err != nil {
+		t.Fatal(err)
+	}
+	p := mustPolicy(t, []string{work}, false, 0)
+	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("out", "x.txt"))), ReasonSensitivePath)
+	if _, err := p.Resolve(work, filepath.Join("end", "x.txt")); err != nil {
+		t.Errorf("the same file named directly: %v, want accepted", err)
+	}
+}
+
+// A directory named like a .env file — a Python virtual environment called
+// .env — is ordinary with allow_hidden, in both directions: only a file of
+// that name holds credentials.
+func TestAnEnvNamedDirectoryIsOrdinary(t *testing.T) {
+	t.Setenv("HOME", canonTemp(t))
+	work := canonTemp(t)
+	writeFile(t, filepath.Join(work, ".env", "pyvenv.cfg"), "home = /usr/bin")
+	p := mustPolicy(t, []string{work}, true, 0)
+	if _, err := p.Resolve(work, filepath.Join(".env", "pyvenv.cfg")); err != nil {
+		t.Errorf("upload of .env/pyvenv.cfg: %v, want accepted", err)
+	}
+	if _, err := p.ResolveNewFile(work, ".env", "notes.txt"); err != nil {
+		t.Errorf("download into .env/: %v, want accepted", err)
+	}
+	writeFile(t, filepath.Join(work, "app", ".env"), "TOKEN=x")
+	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("app", ".env"))), ReasonSensitivePath)
 }

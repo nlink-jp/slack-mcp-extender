@@ -95,16 +95,27 @@ func DownloadDenied(raw, resolved string, serverDirs []string) (reason, why stri
 
 // DirDenied reports why a directory beneath the work directory — the one an
 // upload is taken from, or a download lands in — may not be used, as
-// pathguard's reason and sentence, or two empty strings. It applies the list
-// of what may not be a work directory, system directories among them, which
-// the two file policies leave out by design: a work directory that is an
-// ancestor of a system tree (reachable only for a server running as root)
-// must not make the files in it fair game.
+// pathguard's reason and sentence, or two empty strings: a system directory,
+// or the home directory itself, which the two file policies leave out by
+// design. A work directory above one (reachable for a server running as
+// root, or with $HOME under a writable parent) must not make the files in it
+// fair game.
+//
+// The credential and server places CheckBeneath also applies are left to
+// UploadDenied and DownloadDenied, which judge them by each direction's own
+// rules; applied here a second time, the work-directory rule for a directory
+// named like a .env file would refuse a Python virtual environment called
+// .env. Any other refusal — the check could not be set up, the path does not
+// resolve — stands.
 func DirDenied(dir string, serverDirs []string) (reason, why string) {
 	var e *Error
 	if !errors.As(resolver(serverDirs).CheckBeneath(dir), &e) {
 		return "", ""
 	}
 	reason, _ = e.Details["reason"].(string)
+	switch reason {
+	case "sensitive_path", "server_dir":
+		return "", ""
+	}
 	return reason, e.Message
 }

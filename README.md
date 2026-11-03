@@ -46,8 +46,9 @@ agent names on every call**:
 - downloads never overwrite, and a Slack-side filename can influence only
   the (sanitized) name of the saved file, never where it lands
 - the work_dir is validated before it is trusted (absolute, existing,
-  writable, never a system location, your home directory itself, a
-  credential directory such as `~/.ssh`, or **this server's own config and
+  writable — checked on macOS and Linux only; on Windows a directory the
+  server cannot write to fails later, at the first write — never a system
+  location, your home directory itself, a credential directory such as `~/.ssh`, or **this server's own config and
   state directories** — the state directory holds `tokens.json`, and an
   upload leaves the machine), and it is the **only** root — never widened
   from Slack-derived values

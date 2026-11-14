@@ -33,6 +33,7 @@ make test-linux # same suite on Linux (container)
 make check      # lint + test + build-all
 make build-all  # cross-compile linux/{amd64,arm64}, darwin/arm64, windows/amd64
 make e2e        # LIVE tests vs the real Slack MCP (see below)
+make vuln            # govulncheck over the build; `make package` runs it first and stops on a finding
 make verify-release  # gate: notarized, fresh, runs at this version, clean linux archives (run before upload)
 ```
 

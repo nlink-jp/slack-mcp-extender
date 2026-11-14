@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `make package` runs `govulncheck ./...` first (`make vuln`) and stops on a
+  finding, so a release cannot be built past one.
+- `make check` passes again. It stopped at lint: nine test statements dropped
+  the result of `wantViolation` without the `_ =` the rest of the package
+  writes. Only tests changed.
+
 ## [0.5.2] - 2026-11-04
 
 ### Security

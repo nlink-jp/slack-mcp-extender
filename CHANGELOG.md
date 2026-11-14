@@ -13,6 +13,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make check` passes again. It stopped at lint: nine test statements dropped
   the result of `wantViolation` without the `_ =` the rest of the package
   writes. Only tests changed.
+- `make vuln` — and so `make package` — scans every platform in `PLATFORMS`,
+  with the environment `build-all` builds each with. It scanned the host's
+  build alone, so an advisory in a Linux- or Windows-only package could not
+  stop a release.
 
 ## [0.5.2] - 2026-11-04
 

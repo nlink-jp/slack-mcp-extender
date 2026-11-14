@@ -29,7 +29,7 @@ func TestADownloadIsJudgedAsStayingOnTheMachine(t *testing.T) {
 			t.Errorf("download to %s/%s: %v, want accepted", c.dir, c.name, err)
 		}
 		writeFile(t, filepath.Join(c.dir, c.name), "x")
-		wantViolation(t, mustFail(p.Resolve("", filepath.Join(c.dir, c.name))), ReasonSensitivePath)
+		_ = wantViolation(t, mustFail(p.Resolve("", filepath.Join(c.dir, c.name))), ReasonSensitivePath)
 	}
 }
 
@@ -87,10 +87,10 @@ func TestAMissingCredentialPathIsRefusedNotReportedMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := mustPolicy(t, []string{work}, true, 0)
-	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("gcloud", "credentials.db"))), ReasonSensitivePath)
-	wantViolation(t, mustFail(p.ResolveNewFile(work, filepath.Join("gh", "sub"), "hosts.yml")), ReasonSensitivePath)
+	_ = wantViolation(t, mustFail(p.Resolve(work, filepath.Join("gcloud", "credentials.db"))), ReasonSensitivePath)
+	_ = wantViolation(t, mustFail(p.ResolveNewFile(work, filepath.Join("gh", "sub"), "hosts.yml")), ReasonSensitivePath)
 	// The control: an ordinary missing file is still reported missing.
-	wantViolation(t, mustFail(p.Resolve(work, "absent.txt")), ReasonNotFound)
+	_ = wantViolation(t, mustFail(p.Resolve(work, "absent.txt")), ReasonNotFound)
 }
 
 // A download whose directory is reached through a chain of links passing
@@ -113,7 +113,7 @@ func TestADownloadThroughALinkChainInACredentialDirectoryIsRefused(t *testing.T)
 		t.Fatal(err)
 	}
 	p := mustPolicy(t, []string{work}, false, 0)
-	wantViolation(t, mustFail(p.ResolveNewFile(work, "out", "x.txt")), ReasonSensitivePath)
+	_ = wantViolation(t, mustFail(p.ResolveNewFile(work, "out", "x.txt")), ReasonSensitivePath)
 	if _, err := p.ResolveNewFile(work, "end", "x.txt"); err != nil {
 		t.Errorf("the same directory named directly: %v, want accepted", err)
 	}
@@ -230,8 +230,8 @@ func TestExistenceIsNotRevealed(t *testing.T) {
 
 	// The control: inside the root, a typo is still reported missing — also
 	// under a /var spelling of the work directory.
-	wantViolation(t, mustFail(pp.Resolve(varSpelling, "typo.txt")), ReasonNotFound)
-	wantViolation(t, mustFail(pp.ResolveNewFile(varSpelling, "nodir", "x.txt")), ReasonNotFound)
+	_ = wantViolation(t, mustFail(pp.Resolve(varSpelling, "typo.txt")), ReasonNotFound)
+	_ = wantViolation(t, mustFail(pp.ResolveNewFile(varSpelling, "nodir", "x.txt")), ReasonNotFound)
 }
 
 // An upload through a chain of links that passes through a credential
@@ -252,7 +252,7 @@ func TestAnUploadThroughALinkChainInACredentialDirectoryIsRefused(t *testing.T) 
 		t.Fatal(err)
 	}
 	p := mustPolicy(t, []string{work}, false, 0)
-	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("out", "x.txt"))), ReasonSensitivePath)
+	_ = wantViolation(t, mustFail(p.Resolve(work, filepath.Join("out", "x.txt"))), ReasonSensitivePath)
 	if _, err := p.Resolve(work, filepath.Join("end", "x.txt")); err != nil {
 		t.Errorf("the same file named directly: %v, want accepted", err)
 	}
@@ -273,7 +273,7 @@ func TestAnEnvNamedDirectoryIsOrdinary(t *testing.T) {
 		t.Errorf("download into .env/: %v, want accepted", err)
 	}
 	writeFile(t, filepath.Join(work, "app", ".env"), "TOKEN=x")
-	wantViolation(t, mustFail(p.Resolve(work, filepath.Join("app", ".env"))), ReasonSensitivePath)
+	_ = wantViolation(t, mustFail(p.Resolve(work, filepath.Join("app", ".env"))), ReasonSensitivePath)
 }
 
 // The corners of placing a path, each found by probing: a planted link whose

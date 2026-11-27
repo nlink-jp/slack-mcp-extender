@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-27
+
+### Changed
+
+- The shared MCP protocol layer is updated to nlink-jp/mcp v0.2.0
+  (organization ADR-030 §6: the module at its latest tag). v0.2.0 changes only
+  the client's line reading (`LineConn`), which this relay does not use, so
+  its behaviour does not change.
+
 ## [0.6.0] - 2026-11-27
 
 The proxy speaks both MCP eras (ADR-0005). MCP 2026-07-28 replaced the

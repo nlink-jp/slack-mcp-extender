@@ -79,7 +79,7 @@ func buildProxy(cfg *config.Config, version string, in io.Reader, out io.Writer,
 		return nil, err
 	}
 
-	up, err := transport.NewSSEClientTransport(cfg.Upstream.URL, transport.WithTokenProvider(tokens))
+	up, err := transport.NewSSEClientTransport(cfg.Upstream.URL, transport.WithTokenProvider(tokens), transport.WithLogf(logf))
 	if err != nil {
 		return nil, fmt.Errorf("upstream transport: %w", err)
 	}

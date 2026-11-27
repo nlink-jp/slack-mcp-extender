@@ -4,7 +4,11 @@
 // content — transparency is a design invariant of slack-mcp-extender.
 package jsonrpc
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
 
 // Message represents a raw JSON-RPC 2.0 message (request, response, or
 // notification).
@@ -44,7 +48,27 @@ func (m *Message) IDString() string {
 	if len(m.ID) == 0 || string(m.ID) == "null" {
 		return ""
 	}
-	return string(m.ID)
+	return CanonicalID(m.ID)
+}
+
+// CanonicalID spells a JSON-RPC id one way: decoded, then encoded again
+// without HTML escaping, numbers kept as written. Two spellings of one id —
+// "a<b" and "a\u003cb" — get one key, so an answer whose id an encoder
+// re-spelled still finds its request.
+func CanonicalID(raw json.RawMessage) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil {
+		return string(raw)
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(v) != nil {
+		return string(raw)
+	}
+	return strings.TrimRight(buf.String(), "\n")
 }
 
 // Parse parses a raw JSON message.

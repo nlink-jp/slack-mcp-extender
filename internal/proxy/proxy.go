@@ -95,6 +95,11 @@ func (p *Proxy) readAgent() error {
 		// The reader reuses its buffer; the line outlives this iteration.
 		line := append([]byte(nil), read...)
 		msg, err := jsonrpc.Parse(line)
+		if err == nil && msg.Method == "" && len(msg.ID) == 0 && msg.Result == nil && msg.Error == nil {
+			// JSON that decodes to no message at all — a bare null, an empty
+			// object (ADR-0005 §10.6).
+			err = errors.New("not a JSON-RPC message")
+		}
 		if err != nil {
 			// A request among these would otherwise wait for ever; its id
 			// cannot be read, so the answer carries a null one (ADR-0005 §8).

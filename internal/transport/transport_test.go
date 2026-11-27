@@ -313,9 +313,19 @@ func TestSSEErrorStatusSurfaced(t *testing.T) {
 	}
 	defer func() { _ = tr.Close() }()
 
-	err = tr.Send([]byte(`{}`))
-	if err == nil || !strings.Contains(err.Error(), "502") {
-		t.Fatalf("err = %v", err)
+	// A request is answered under its own id with a synthesized -32603
+	// (httpwire.Classify; ADR-0005 §3), not turned into a send failure.
+	if err := tr.Send([]byte(`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	msg, ok := tr.ReadLine()
+	if !ok {
+		t.Fatal("ReadLine closed")
+	}
+	for _, want := range []string{`"id":3`, "-32603", "502"} {
+		if !strings.Contains(string(msg), want) {
+			t.Errorf("answer %s lacks %s", msg, want)
+		}
 	}
 }
 

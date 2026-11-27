@@ -85,6 +85,27 @@ it), is refused too. The refusal is a structured `path_denied` error with
 `work_dir_denied` gives in `reason`); it is written to the audit log like any
 other denial, and ordinary files inside an ordinary work_dir are unaffected.
 
+## MCP protocol versions
+
+MCP 2026-07-28 replaced the `initialize` handshake with a version carried on
+every request. The proxy does not convert between the two: Slack sees the era
+your agent opens, so an agent that speaks both keeps working whichever Slack
+speaks. What the specification asks of an HTTP client is added on the way:
+
+- a request in the newer protocol carries its `MCP-Protocol-Version` with
+  `Mcp-Method`, `Mcp-Name` and the `Mcp-Param-*` headers a tool's schema asks
+  for (`x-mcp-header`); in a handshake session, every message after
+  `initialize` carries the negotiated `MCP-Protocol-Version`. A request whose
+  headers cannot be built is answered with an error and not sent;
+- an official tool whose `x-mcp-header` declaration is invalid is left out of
+  the tool list, and the log says which and why;
+- if Slack refuses a tool call because those headers no longer match its tools,
+  the proxy reads the tool list once and sends the call again;
+- a request Slack leaves unanswered — an empty answer, a stream that ends
+  without the answer, an answer over the size limits — gets an error at once,
+  not after the 120-second timeout;
+- the `ext_` tools answer in the shape of the agent's protocol.
+
 ## Installation
 
 Download the latest binary for your platform from
@@ -132,6 +153,8 @@ Desktop MCP registration per workspace**.
   app manifest: [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 - [RFP (English)](docs/en/slack-mcp-extender-rfp.md) /
   [RFP (日本語)](docs/ja/slack-mcp-extender-rfp.ja.md)
+- [Design decisions](docs/en/adr/) — among them why both MCP protocol eras
+  pass through unchanged (0005)
 
 ## License
 

@@ -6,7 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+The proxy speaks both MCP eras (ADR-0005). MCP 2026-07-28 replaced the
+`initialize` handshake with a version carried on every request; the proxy
+passes the era your agent opens through to Slack unchanged and adds what the
+specification requires of an HTTP client, through
+[nlink-jp/mcp](https://github.com/nlink-jp/mcp), the MCP protocol layer shared
+by nlink-jp's servers and relays (standard library only).
+
+### Added
+
+- **The MCP protocol headers on every POST.** A handshake session's messages
+  carry the negotiated `MCP-Protocol-Version` — required since 2025-06-18 and
+  missing until now. A 2026-07-28 request carries its version, `Mcp-Method`,
+  `Mcp-Name`, and the `Mcp-Param-*` headers a tool's schema asks for.
+- **Official tools with an invalid `x-mcp-header` declaration are left out of
+  the tool list**, as the specification requires; the log names them.
+- **A tool call Slack refuses because its headers no longer match is sent once
+  more** after the proxy reads the tool list again.
+- **The `ext_` tools answer in the agent's era**: a 2026-07-28 request's answer
+  carries `resultType` and the extender's `serverInfo`.
+
 ### Changed
+
 
 - `make package` runs `govulncheck ./...` first (`make vuln`) and stops on a
   finding, so a release cannot be built past one.
@@ -17,6 +38,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with the environment `build-all` builds each with. It scanned the host's
   build alone, so an advisory in a Linux- or Windows-only package could not
   stop a release.
+
+### Fixed
+
+- **An `id: null` error from Slack no longer stops the agent for 120 seconds.**
+  It is answered under the request's id; so is a non-2xx answer without a
+  JSON-RPC body, a 2xx that is empty or not JSON, and a stream that ends without
+  the answer. The proxy handles one request at a time, so each of these used to
+  hold every later message until the timeout.
+- **One over-long or malformed message from the agent no longer ends or stalls
+  the proxy.** An over-long line used to end it; a malformed one went
+  unanswered. Both are answered with `-32700`, and the proxy goes on.
+- **Slack's answers are bounded**: a JSON body at 8 MiB (it was read without a
+  bound) and an SSE line or event at 1 MiB, each answered with `-32603` past the
+  bound (an over-long SSE line used to end the stream silently).
+- **A request whose headers cannot be built is answered with `-32602` and not
+  sent**; a batch is sent without protocol headers.
 
 ## [0.5.2] - 2026-11-04
 

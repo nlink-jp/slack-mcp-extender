@@ -6,8 +6,14 @@ workspace CLAUDE.md) apply on top of these.
 ## Non-negotiable design invariants
 
 - **Transparency**: upstream tools, notifications, and responses pass through
-  unmodified. No tool-name rewriting. Injected tools are added at the
-  tools/list merge only.
+  with their content unchanged, and the agent's MCP era passes through — the
+  proxy answers neither `initialize` nor `server/discover` and converts no era
+  (ADR-0005). No tool-name rewriting. Injected tools are added at the
+  tools/list merge only. What the transport adds is what the MCP specification
+  requires of an HTTP client, through nlink-jp/mcp, never by hand: headers
+  derived from each body, removing tools with invalid `x-mcp-header` marks,
+  answering what Slack did not answer as JSON-RPC, and one retry of a
+  HeaderMismatch.
 - **Single user token**: proxy forwarding and uploads share one OAuth session.
   Never introduce a second credential path.
 - **Containment is the caller's `work_dir`, named on every call** (ADR-0003).
@@ -47,8 +53,8 @@ workspace CLAUDE.md) apply on top of these.
   `Policy.ResolveNewFile`, and never introduce a list or a name comparison of
   its own.
 - **No third-party Go dependencies** — the standard library and modules of
-  the nlink-jp organization that hold the same rule (today nlink-jp/pathguard)
-  only.
+  the nlink-jp organization that hold the same rule (today nlink-jp/pathguard
+  and nlink-jp/mcp) only.
 - **swrite stays untouched**: bot-identity uploads belong to swrite, not here.
 
 ## Secrets

@@ -17,7 +17,7 @@ hidden-component rejection, size cap) because the tool is otherwise an
 exfiltration primitive.
 References the mcp-guardian skeleton (proxy/SSE/OAuth/tools-merge) but is a
 full new build with no governance machinery. No third-party dependencies
-(only nlink-jp/pathguard, itself standard library only).
+(only nlink-jp/pathguard and nlink-jp/mcp, each standard library only).
 
 **Status: released** (v0.1.0). Proxy, OAuth login, injected tools,
 containment, interactive `init`; ~90% coverage per package;
@@ -43,8 +43,8 @@ runs transparency + containment-denial tests (no Slack side effects).
 Additionally set `SLACK_MCP_EXTENDER_E2E_CHANNEL` (channel ID) to run the
 posting test (real root + thread attachments).
 
-Go 1.25+. **No third-party dependencies** — the standard library and
-nlink-jp/pathguard only.
+Go 1.25+. **No third-party dependencies** — the standard library,
+nlink-jp/pathguard and nlink-jp/mcp only.
 Module path: `github.com/nlink-jp/slack-mcp-extender`.
 
 ## Structure
@@ -59,16 +59,36 @@ internal/config/         per-workspace JSON config (strict decode, 0600)
 internal/transport/      Streamable HTTP/SSE client + token store/refresh
 internal/oauth/          authorization_code login (PKCE, HTTPS loopback)
 internal/upload/         Slack external upload 3-step + egress audit log
-internal/proxy/          transparent pipe + merge + routing + injected tools
+internal/proxy/          transparent pipe (the agent's era passes through) + merge
+                         + routing + injected tools answered in the agent's era
 scripts/                 org codesign/notarize/brew templates (verbatim)
 docs/{en,ja}/            RFP and future docs (ja = primary, *.ja.md suffix)
 ```
 
 Key transparency detail: upstream tools/list entries are merged as raw
 JSON (never decoded into structs), so upstream-only fields (title,
-annotations, outputSchema, nextCursor) survive byte-for-byte.
+annotations, outputSchema, nextCursor, and a modern result's resultType,
+ttlMs and cacheScope) survive byte-for-byte.
 
 ## Gotchas
+
+- **The MCP protocol headers come from the body** (ADR-0005 §5).
+  `httpwire.Tracker.Outgoing` derives them for every POST; a request whose
+  headers cannot be derived is answered with -32602 and not sent; a batch goes
+  without them. Every answer — a JSON body and each SSE message — passes
+  through the Tracker before it is queued, or the version and the marks are not
+  learned.
+- **The HeaderMismatch retry is the only request the extender originates**
+  (`internal/transport/mismatch.go`): once per request, refreshes serialized,
+  up to 10 pages within 60 s, answers kept from the agent.
+- **Answers that would leave the agent waiting are answered at once** with
+  -32603 under the request's id: a non-2xx without a JSON-RPC body, an id:null
+  error, a 2xx that is not JSON or is empty, a stream ending without the
+  answer, a JSON body over 8 MiB, an SSE line or event over 1 MiB. The proxy
+  handles one request at a time, so any of these used to stop all agent input
+  for the 120-second timeout.
+- **Injected answers are shaped with `server.ShapeResult`**; the extender does
+  not check the version of a locally answered request (ADR-0005 §4).
 
 - **`make lint` is green, and every unchecked return says why.** `.golangci.yml`
   excludes only `fmt.Fprint*` (writes to the CLI's own streams); every other

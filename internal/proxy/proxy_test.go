@@ -568,3 +568,30 @@ func TestALateAnswerToATimedOutRequestIsDropped(t *testing.T) {
 		t.Errorf("the late answer reached the agent, or the notification did not: %q", got)
 	}
 }
+
+// An answer whose id an encoder re-spelled ("a\u003cb" for "a<b") still
+// finds its request; it is not dropped as an answer to no one.
+func TestAnAnswerUnderAReSpelledIDFindsItsRequest(t *testing.T) {
+	h := newHarness(t, nil, 1000)
+	h.up.respond = func([]byte) [][]byte {
+		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":"a\u003cb\u0026c","result":{"tools":[]}}`)}
+	}
+	h.send(`{"jsonrpc":"2.0","id":"a<b&c","method":"tools/list"}`)
+	if got := h.expect(); !strings.Contains(got, `"tools"`) {
+		t.Errorf("the answer was dropped; agent got %q", got)
+	}
+}
+
+// JSON that decodes to no message at all is an invalid request too.
+func TestAnEmptyMessageGetsInvalidRequest(t *testing.T) {
+	h := newHarness(t, nil, 1000)
+	for _, line := range []string{`null`, `{}`} {
+		h.send(line)
+		if got := h.expect(); !strings.Contains(got, "-32600") {
+			t.Errorf("%s was answered %q", line, got)
+		}
+	}
+	if len(h.up.sentLines()) != 0 {
+		t.Errorf("an empty message reached the upstream: %q", h.up.sentLines())
+	}
+}

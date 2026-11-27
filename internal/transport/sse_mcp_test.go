@@ -661,3 +661,24 @@ func TestTheDeleteGoesWithoutAnUnsafeVersion(t *testing.T) {
 		t.Fatal("no DELETE: the session was not ended")
 	}
 }
+
+// A synthesized answer and an id correction keep the id's spelling: an
+// HTML-escaping encoder would turn "a<b" into "a\u003cb".
+func TestSynthesizedAnswersKeepTheIDsSpelling(t *testing.T) {
+	for name, answer := range map[string]func(w http.ResponseWriter){
+		"synthesized": func(w http.ResponseWriter) { w.WriteHeader(http.StatusOK) },
+		"corrected":   func(w http.ResponseWriter) { jsonAnswer(w, `{"jsonrpc":"2.0","id":null,"result":{"x":"<&>"}}`) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var rec recorder
+			srv := rec.server(t, func(w http.ResponseWriter, _ string) { answer(w) })
+			tr, _ := NewSSEClientTransport(srv.URL)
+			defer func() { _ = tr.Close() }()
+			_ = tr.Send([]byte(`{"jsonrpc":"2.0","id":"a<b","method":"tools/list"}`))
+			got := receiveWithin(t, tr, time.Second)
+			if !strings.Contains(got, `"id":"a<b"`) || strings.Contains(got, `\u003c`) {
+				t.Errorf("answer %s", got)
+			}
+		})
+	}
+}

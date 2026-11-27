@@ -163,6 +163,13 @@ func (t *sseClientTransport) prepare(data []byte) (*outgoing, error) {
 			t.log("forwarding a batch without MCP protocol headers")
 			return out, nil
 		}
+		if !isModern(data) {
+			// A legacy message fails only when the negotiated version cannot
+			// go into a header. It goes without protocol headers, as before
+			// the migration (ADR-0005 §10.2).
+			t.log("sending a message without MCP protocol headers: %v", err)
+			return out, nil
+		}
 		if out.id != nil {
 			// httpwire's error names the argument and the tool, never a value.
 			t.enqueue(errorBytes(out.id, codeInvalidParams, err.Error()))
@@ -271,6 +278,10 @@ func (t *sseClientTransport) handleResponse(resp *http.Response, out *outgoing) 
 	outcome := httpwire.Classify(out.id, status, contentType, body)
 	switch outcome.Kind {
 	case httpwire.Accepted:
+		if out.id != nil {
+			// A request needs an answer (ADR-0005 §10.1).
+			t.answerOwn(out.id, fmt.Sprintf("upstream answered HTTP %d with no body", status))
+		}
 		return nil
 	case httpwire.Drop:
 		if !ok2xx {
@@ -413,7 +424,11 @@ func (t *sseClientTransport) consumeSSEStream(body io.ReadCloser, openID json.Ra
 			eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		case strings.HasPrefix(line, "data:"):
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			size += len(data) + 1
+			// The joined size: the lines and the newlines between them.
+			if len(dataLines) > 0 {
+				size++
+			}
+			size += len(data)
 			if size > maxSSEBytes {
 				overflow = true
 			}
@@ -436,6 +451,11 @@ func (t *sseClientTransport) consumeSSEStream(body io.ReadCloser, openID json.Ra
 		return
 	}
 	flush()
+	if openID != nil && !answered {
+		// The stream ended without the answer to the request that opened it
+		// (ADR-0005 §10.1).
+		t.answerOwn(openID, "upstream stream ended without an answer")
+	}
 }
 
 // dispatchSSEData queues SSE event data — a single JSON-RPC message or a
@@ -454,6 +474,10 @@ func (t *sseClientTransport) dispatchSSEData(data string, openID json.RawMessage
 	}
 	answered := false
 	for _, msg := range messages {
+		if !json.Valid(msg) {
+			t.log("dropping an upstream event that is not JSON")
+			continue
+		}
 		if openID != nil && answers(msg, openID) {
 			answered = true
 		}
@@ -514,4 +538,19 @@ func truncateBytes(b []byte, maxLen int) string {
 		return string(b)
 	}
 	return string(b[:maxLen]) + "..."
+}
+
+// isModern reports whether a message carries a protocol version in its
+// params._meta — a message of the per-request era.
+func isModern(body []byte) bool {
+	var m struct {
+		Params struct {
+			Meta map[string]json.RawMessage `json:"_meta"`
+		} `json:"params"`
+	}
+	if json.Unmarshal(body, &m) != nil {
+		return false
+	}
+	var v string
+	return json.Unmarshal(m.Params.Meta[metaProtocolVersion], &v) == nil
 }

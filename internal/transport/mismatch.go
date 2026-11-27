@@ -19,15 +19,16 @@ import (
 // says the client SHOULD call tools/list and retry; a stdio client cannot fix
 // headers, so the extender does it, once per request (ADR-0005 §7).
 
+// refreshTimeout bounds one refresh, all its pages together. Past it the
+// refresh has failed, and the agent gets the first -32020 (ADR-0005 §10.4).
+// A variable so that tests can shorten it.
+var refreshTimeout = 60 * time.Second
+
 const (
 	codeHeaderMismatch = -32020
 
 	// refreshPages bounds how many tools/list pages one refresh reads.
 	refreshPages = 10
-
-	// refreshTimeout bounds each refresh request. Past it the refresh has
-	// failed, and the client gets the first -32020.
-	refreshTimeout = 60 * time.Second
 
 	metaProtocolVersion    = "io.modelcontextprotocol/protocolVersion"
 	metaClientCapabilities = "io.modelcontextprotocol/clientCapabilities"
@@ -88,6 +89,8 @@ func (t *sseClientTransport) refreshMarks(original []byte) error {
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+	defer cancel()
 	cursor := ""
 	for page := 0; page < refreshPages; page++ {
 		id := fmt.Sprintf("slack-mcp-extender-refresh-%d", t.refreshSeq.Add(1))
@@ -99,7 +102,7 @@ func (t *sseClientTransport) refreshMarks(original []byte) error {
 		if err != nil {
 			return err
 		}
-		answer, err := t.fetch(body, id)
+		answer, err := t.fetch(ctx, body, id)
 		if err != nil {
 			return err
 		}
@@ -143,7 +146,7 @@ func refreshMeta(original []byte) (map[string]json.RawMessage, error) {
 
 // fetch posts one refresh request and returns the answer carrying id, read
 // synchronously from a JSON body or an SSE stream.
-func (t *sseClientTransport) fetch(body []byte, id string) ([]byte, error) {
+func (t *sseClientTransport) fetch(ctx context.Context, body []byte, id string) ([]byte, error) {
 	out, err := t.prepare(body)
 	if err != nil {
 		return nil, err
@@ -151,8 +154,6 @@ func (t *sseClientTransport) fetch(body []byte, id string) ([]byte, error) {
 	if out == nil {
 		return nil, errors.New("the refresh request could not be sent")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-	defer cancel()
 	out.ctx = ctx
 
 	resp, err := t.postRenewing(out)
@@ -205,7 +206,10 @@ func readAnswerFromStream(body io.Reader, id string) ([]byte, error) {
 			}
 		case strings.HasPrefix(line, "data:"):
 			d := strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " ")
-			size += len(d) + 1
+			if len(data) > 0 {
+				size++
+			}
+			size += len(d)
 			if size > maxSSEBytes {
 				return nil, fmt.Errorf("an event is larger than %d bytes", maxSSEBytes)
 			}

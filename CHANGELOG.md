@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-27
+
 The proxy speaks both MCP eras (ADR-0005). MCP 2026-07-28 replaced the
 `initialize` handshake with a version carried on every request; the proxy
 passes the era your agent opens through to Slack unchanged and adds what the

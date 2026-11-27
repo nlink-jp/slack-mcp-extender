@@ -26,7 +26,7 @@ func TestBuildProxyDeclaresTheServersOwnDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, err := buildProxy(cfg, strings.NewReader(""), &bytes.Buffer{}, func(string, ...any) {})
+	p, err := buildProxy(cfg, "test", strings.NewReader(""), &bytes.Buffer{}, func(string, ...any) {})
 	if err != nil {
 		t.Fatalf("buildProxy: %v", err)
 	}

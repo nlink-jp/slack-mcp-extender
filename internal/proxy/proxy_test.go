@@ -453,15 +453,91 @@ func TestUpstreamSendErrorSurfaces(t *testing.T) {
 	}
 }
 
-func TestMalformedAgentLineSkipped(t *testing.T) {
+// A malformed line is answered with a null-id parse error — a request among
+// them would otherwise wait for ever — and the next line still goes through
+// (ADR-0005 §8).
+func TestMalformedAgentLineIsAnswered(t *testing.T) {
 	h := newHarness(t, nil, 1000)
 	h.up.respond = func([]byte) [][]byte {
 		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":11,"result":{}}`)}
 	}
 	h.send(`{this is not json`)
 	h.send(`{"jsonrpc":"2.0","id":11,"method":"ping"}`)
-	got := h.expect()
-	if !strings.Contains(got, `"id":11`) {
+	if got := h.expect(); !strings.Contains(got, "-32700") || !strings.Contains(got, `"id":null`) {
+		t.Errorf("the malformed line was not answered: %q", got)
+	}
+	if got := h.expect(); !strings.Contains(got, `"id":11`) {
 		t.Errorf("agent got %q", got)
+	}
+}
+
+// One message over the limit is skipped and answered; the proxy goes on.
+func TestOverlongAgentLineIsAnsweredAndTheProxyGoesOn(t *testing.T) {
+	h := newHarness(t, nil, 1000)
+	h.up.respond = func([]byte) [][]byte {
+		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":12,"result":{}}`)}
+	}
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"x":"` + strings.Repeat("a", maxAgentLine) + `"}}`)
+	h.send(`{"jsonrpc":"2.0","id":12,"method":"ping"}`)
+	if got := h.expect(); !strings.Contains(got, "-32700") || !strings.Contains(got, "longer than 1048576 bytes") {
+		t.Errorf("the over-long line was not answered: %q", got)
+	}
+	if got := h.expect(); !strings.Contains(got, `"id":12`) {
+		t.Errorf("the line after the over-long one was lost: %q", got)
+	}
+}
+
+const testModernMeta = `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"t","version":"0"}}`
+
+// An injected tool answers in the shape of the agent's era (ADR-0005 §4).
+func TestInjectedAnswerMatchesTheEra(t *testing.T) {
+	injected, root := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
+	missing := filepath.Join(root, "missing.txt")
+	call := func(id int, meta string) string {
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"ext_file_upload","arguments":{"channel_id":"C1","work_dir":%q,"file":%q}%s}}`, id, root, missing, meta)
+	}
+
+	h := newHarness(t, injected, 1000)
+	h.send(call(21, ","+testModernMeta))
+	var modern struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+	got := h.expect()
+	if err := json.Unmarshal([]byte(got), &modern); err != nil {
+		t.Fatalf("%v: %s", err, got)
+	}
+	if string(modern.Result["resultType"]) != `"complete"` {
+		t.Errorf("a modern answer lacks resultType: %s", got)
+	}
+	if !strings.Contains(string(modern.Result["_meta"]), `"io.modelcontextprotocol/serverInfo":{"name":"slack-mcp-extender"`) {
+		t.Errorf("a modern answer lacks serverInfo: %s", got)
+	}
+	if _, ok := modern.Result["content"]; !ok {
+		t.Errorf("the tool's own result was lost: %s", got)
+	}
+
+	h.send(call(22, ""))
+	if got := h.expect(); strings.Contains(got, "resultType") || strings.Contains(got, "serverInfo") {
+		t.Errorf("a legacy answer changed shape: %s", got)
+	}
+	if len(h.up.sentLines()) != 0 {
+		t.Errorf("an injected call reached the upstream: %q", h.up.sentLines())
+	}
+}
+
+// Merging the injected tools into a modern tools/list keeps the result's
+// modern keys (ADR-0005 §3).
+func TestModernToolsListMergeKeepsTheModernKeys(t *testing.T) {
+	injected, _ := testInjected(t, &stubUploader{res: &transfer.UploadResult{}})
+	h := newHarness(t, injected, 1000)
+	h.up.respond = func([]byte) [][]byte {
+		return [][]byte{[]byte(`{"jsonrpc":"2.0","id":3,"result":{"resultType":"complete","ttlMs":1000,"cacheScope":"private","tools":[{"name":"slack_search"}]}}`)}
+	}
+	h.send(`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{` + testModernMeta + `}}`)
+	got := h.expect()
+	for _, want := range []string{`"resultType":"complete"`, `"ttlMs":1000`, `"cacheScope":"private"`, `"slack_search"`, ToolFileUpload} {
+		if !strings.Contains(got, want) {
+			t.Errorf("merged tools/list lacks %s: %s", want, got)
+		}
 	}
 }

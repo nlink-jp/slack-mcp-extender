@@ -25,7 +25,7 @@ func Run(args []string, version string, stdin io.Reader, stdout, stderr io.Write
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "mcp":
-		return runMCP(rest, stdout, stderr)
+		return runMCP(rest, version, stdout, stderr)
 	case "init":
 		return runInit(stdin, stdout, stderr)
 	case "login":

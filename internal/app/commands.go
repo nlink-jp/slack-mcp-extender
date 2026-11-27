@@ -36,7 +36,7 @@ func parseConfigFlag(name string, args []string, stderr io.Writer) (string, bool
 }
 
 // runMCP starts the stdio MCP server: transparent proxy + injected tools.
-func runMCP(args []string, stdout, stderr io.Writer) int {
+func runMCP(args []string, version string, stdout, stderr io.Writer) int {
 	cfgPath, ok := parseConfigFlag("mcp", args, stderr)
 	if !ok {
 		return exitError
@@ -48,7 +48,7 @@ func runMCP(args []string, stdout, stderr io.Writer) int {
 	}
 
 	logf := func(format string, a ...any) { fmt.Fprintf(stderr, format, a...) }
-	p, err := buildProxy(cfg, os.Stdin, stdout, logf)
+	p, err := buildProxy(cfg, version, os.Stdin, stdout, logf)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitError
@@ -67,7 +67,7 @@ func runMCP(args []string, stdout, stderr io.Writer) int {
 
 // buildProxy assembles policy, tokens, transport, and injected tools from a
 // loaded config. Split from runMCP for testability.
-func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(string, ...any)) (*proxy.Proxy, error) {
+func buildProxy(cfg *config.Config, version string, in io.Reader, out io.Writer, logf func(string, ...any)) (*proxy.Proxy, error) {
 	tokens, err := transport.NewStoredTokenProvider(transport.StoredTokenConfig{
 		StateDir:         cfg.StateDir,
 		TokenURL:         cfg.OAuth.TokenURL,
@@ -104,6 +104,7 @@ func buildProxy(cfg *config.Config, in io.Reader, out io.Writer, logf func(strin
 		Out:       out,
 		TimeoutMs: cfg.TimeoutMs,
 		Logf:      logf,
+		Version:   version,
 	}, nil
 }
 

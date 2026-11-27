@@ -2,20 +2,35 @@
 // between the agent (stdio) and the upstream Slack MCP (Streamable HTTP),
 // with exactly two seams — tools/list results gain the injected upload
 // tool definitions, and tools/call requests naming an injected tool are
-// handled locally. Everything else passes through unmodified, byte for
-// byte, in both directions.
+// handled locally, in the shape of the agent's MCP era. Everything else
+// passes through with its content unchanged, in both directions; the era is
+// the agent's (ADR-0005 §2). What the specification requires of an HTTP
+// client happens in the transport.
 package proxy
 
 import (
-	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
+	"github.com/nlink-jp/mcp"
+	"github.com/nlink-jp/mcp/server"
+	"github.com/nlink-jp/mcp/wire"
+
 	"github.com/nlink-jp/slack-mcp-extender/internal/jsonrpc"
 	"github.com/nlink-jp/slack-mcp-extender/internal/transport"
 )
+
+// maxAgentLine bounds one message from the agent (ADR-0005 §8).
+const maxAgentLine = 1 << 20 // 1 MiB
+
+// nullID is the id of an answer to a message whose id could not be read.
+// JSON-RPC requires it to be present and null; jsonrpc.Message omits an
+// empty id.
+var nullID = json.RawMessage("null")
 
 // Proxy pipes JSON-RPC between the agent and the upstream.
 type Proxy struct {
@@ -34,7 +49,11 @@ type Proxy struct {
 	// would corrupt the JSON-RPC stream).
 	Logf func(format string, args ...any)
 
-	outMu   sync.Mutex
+	// Version is slack-mcp-extender's version, named in the serverInfo of
+	// the injected tools' modern answers (ADR-0005 §4).
+	Version string
+
+	out     *wire.Writer
 	mu      sync.Mutex
 	pending map[string]chan *jsonrpc.Message
 }
@@ -48,6 +67,7 @@ func (p *Proxy) Run() error {
 		p.TimeoutMs = 120000
 	}
 	p.pending = make(map[string]chan *jsonrpc.Message)
+	p.out = wire.NewWriter(p.Out)
 
 	go p.readUpstream()
 	return p.readAgent()
@@ -55,17 +75,31 @@ func (p *Proxy) Run() error {
 
 // readAgent consumes the agent's messages until EOF.
 func (p *Proxy) readAgent() error {
-	scanner := bufio.NewScanner(p.In)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	reader := wire.NewReader(p.In, maxAgentLine)
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
+	for {
+		read, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if errors.Is(err, wire.ErrLineTooLong) {
+			// The rest of the line was skipped, so its id is unknown. Answer
+			// with a null id and keep reading (ADR-0005 §8).
+			p.Logf("slack-mcp-extender: skipping an agent message longer than %d bytes\n", maxAgentLine)
+			_ = p.writeMessage(jsonrpc.NewErrorResponse(nullID, -32700, fmt.Sprintf("message longer than %d bytes", maxAgentLine)))
 			continue
 		}
+		if err != nil {
+			return err
+		}
+		// The reader reuses its buffer; the line outlives this iteration.
+		line := append([]byte(nil), read...)
 		msg, err := jsonrpc.Parse(line)
 		if err != nil {
+			// A request among these would otherwise wait for ever; its id
+			// cannot be read, so the answer carries a null one (ADR-0005 §8).
 			p.Logf("slack-mcp-extender: invalid JSON from agent: %v\n", err)
+			_ = p.writeMessage(jsonrpc.NewErrorResponse(nullID, -32700, "invalid JSON-RPC message"))
 			continue
 		}
 		if err := p.routeAgentMessage(msg, line); err != nil {
@@ -78,7 +112,6 @@ func (p *Proxy) readAgent() error {
 			}
 		}
 	}
-	return scanner.Err()
 }
 
 // readUpstream dispatches upstream messages: responses resolve pending
@@ -172,11 +205,29 @@ func (p *Proxy) handleToolsCall(msg *jsonrpc.Message, raw []byte) error {
 	}
 
 	result := p.Injected.Handle(params.Name, params.Arguments, params.Meta)
-	resp, err := jsonrpc.NewResultResponse(msg.ID, result)
+	resp, err := p.shapeLocalResult(raw, msg.ID, result)
 	if err != nil {
 		return p.writeMessage(jsonrpc.NewErrorResponse(msg.ID, -32603, err.Error()))
 	}
 	return p.writeMessage(resp)
+}
+
+// shapeLocalResult answers a locally handled request in the shape of the
+// agent's era: a modern request's result gains resultType and the
+// extender's serverInfo; a legacy one is unchanged (ADR-0005 §4). The
+// version is not checked here — that check is Frontend's, which needs every
+// line, initialize included, and the upstream judges the session's version.
+func (p *Proxy) shapeLocalResult(raw []byte, id json.RawMessage, result any) (*jsonrpc.Message, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	info := server.Info{Server: mcp.Implementation{Name: "slack-mcp-extender", Version: p.Version}}
+	shaped, err := server.ShapeResult(server.Inspect(raw), info, data)
+	if err != nil {
+		return nil, err
+	}
+	return &jsonrpc.Message{JSONRPC: "2.0", ID: id, Result: json.RawMessage(shaped)}, nil
 }
 
 func (p *Proxy) forwardAndRelay(msg *jsonrpc.Message, raw []byte) error {
@@ -224,9 +275,12 @@ func (p *Proxy) writeMessage(msg *jsonrpc.Message) error {
 	return p.writeRaw(data)
 }
 
+// writeRaw writes one message as one line. wire.Writer compacts it and
+// refuses what is not JSON; such a message is logged by its error alone.
 func (p *Proxy) writeRaw(data []byte) error {
-	p.outMu.Lock()
-	defer p.outMu.Unlock()
-	_, err := p.Out.Write(append(data, '\n'))
+	err := p.out.Write(data)
+	if err != nil {
+		p.Logf("slack-mcp-extender: write to the agent failed: %v\n", err)
+	}
 	return err
 }

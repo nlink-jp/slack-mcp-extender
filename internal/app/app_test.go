@@ -133,7 +133,7 @@ func TestBuildProxyWithStoredTokens(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	p, err := buildProxy(cfg, strings.NewReader(""), &out, func(string, ...any) {})
+	p, err := buildProxy(cfg, "test", strings.NewReader(""), &out, func(string, ...any) {})
 	if err != nil {
 		t.Fatalf("buildProxy: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestBuildProxyWithoutTokensExplains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = buildProxy(cfg, strings.NewReader(""), &bytes.Buffer{}, func(string, ...any) {})
+	_, err = buildProxy(cfg, "test", strings.NewReader(""), &bytes.Buffer{}, func(string, ...any) {})
 	if err == nil || !strings.Contains(err.Error(), "login") {
 		t.Fatalf("err = %v, want login hint", err)
 	}

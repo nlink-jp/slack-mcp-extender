@@ -541,3 +541,30 @@ func TestModernToolsListMergeKeepsTheModernKeys(t *testing.T) {
 		}
 	}
 }
+
+// JSON that is not a JSON-RPC message is an invalid request, not a parse
+// error (ADR-0005 §10.6).
+func TestJSONThatIsNotAMessageGetsInvalidRequest(t *testing.T) {
+	h := newHarness(t, nil, 1000)
+	for _, line := range []string{`5`, `{"jsonrpc":"2.0","id":1,"method":5}`} {
+		h.send(line)
+		if got := h.expect(); !strings.Contains(got, "-32600") || !strings.Contains(got, `"id":null`) {
+			t.Errorf("%s was answered %q", line, got)
+		}
+	}
+}
+
+// A request the proxy answered at its timeout gets no second answer when the
+// upstream's arrives late (ADR-0005 §10.8); a notification still passes.
+func TestALateAnswerToATimedOutRequestIsDropped(t *testing.T) {
+	h := newHarness(t, nil, 100)
+	h.send(`{"jsonrpc":"2.0","id":81,"method":"tools/list"}`)
+	if got := h.expect(); !strings.Contains(got, "upstream timeout") {
+		t.Fatalf("agent got %q", got)
+	}
+	h.up.incoming <- []byte(`{"jsonrpc":"2.0","id":81,"result":{"tools":[]}}`)
+	h.up.incoming <- []byte(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`)
+	if got := h.expect(); !strings.Contains(got, "notifications/tools/list_changed") {
+		t.Errorf("the late answer reached the agent, or the notification did not: %q", got)
+	}
+}

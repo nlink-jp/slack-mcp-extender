@@ -99,7 +99,12 @@ func (p *Proxy) readAgent() error {
 			// A request among these would otherwise wait for ever; its id
 			// cannot be read, so the answer carries a null one (ADR-0005 §8).
 			p.Logf("slack-mcp-extender: invalid JSON from agent: %v\n", err)
-			_ = p.writeMessage(jsonrpc.NewErrorResponse(nullID, -32700, "invalid JSON-RPC message"))
+			code := -32700
+			if json.Valid(line) {
+				// JSON, but not a JSON-RPC message (ADR-0005 §10.6).
+				code = -32600
+			}
+			_ = p.writeMessage(jsonrpc.NewErrorResponse(nullID, code, "invalid JSON-RPC message"))
 			continue
 		}
 		if err := p.routeAgentMessage(msg, line); err != nil {
@@ -144,9 +149,13 @@ func (p *Proxy) readUpstream() {
 				ch <- msg
 				continue
 			}
+			// No request waits for this id: the proxy already answered it
+			// (the 120 s timeout), so a second answer — a late real one or a
+			// -32603 the transport synthesized — is dropped (ADR-0005 §10.8).
+			p.Logf("slack-mcp-extender: dropping an answer to a request already answered (id %q)\n", id)
+			continue
 		}
-		// Unsolicited response, notification, or server-initiated
-		// request — transparent relay.
+		// Notification or server-initiated request — transparent relay.
 		_ = p.writeRaw(line)
 	}
 }

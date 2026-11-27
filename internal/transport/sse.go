@@ -309,6 +309,12 @@ func (t *sseClientTransport) handleResponse(resp *http.Response, out *outgoing) 
 		t.answerOwn(out.id, fmt.Sprintf("upstream answered HTTP %d with a body that is not JSON", status))
 		return nil
 	}
+	if ok2xx && out.id != nil {
+		// The rule Classify applies to non-2xx answers: a response that does
+		// not name the request would leave it waiting (ADR-0005 §10.5).
+		t.deliverMessage(underID(outcome.Body, out.id))
+		return nil
+	}
 	t.deliverMessage(outcome.Body)
 	return nil
 }
@@ -375,7 +381,9 @@ func (t *sseClientTransport) Close() error {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}
 			}
-			if legacy := t.tracker.LegacyVersion(); legacy != "" {
+			if legacy := t.tracker.LegacyVersion(); legacy != "" && validHeaderValue(legacy) {
+				// A value the HTTP client would refuse would stop the DELETE
+				// itself (ADR-0005 §10.7).
 				req.Header.Set(httpwire.HeaderProtocolVersion, legacy)
 			}
 			if resp, err := t.client.Do(req); err == nil {
@@ -553,4 +561,42 @@ func isModern(body []byte) bool {
 	}
 	var v string
 	return json.Unmarshal(m.Params.Meta[metaProtocolVersion], &v) == nil
+}
+
+// underID returns body with its id set to id when body is a single response
+// (result or error, no method) whose id is absent, null or another one;
+// otherwise body unchanged.
+func underID(body []byte, id json.RawMessage) []byte {
+	var msg map[string]json.RawMessage
+	if json.Unmarshal(bytes.TrimSpace(body), &msg) != nil {
+		return body
+	}
+	if _, isMethod := msg["method"]; isMethod {
+		return body
+	}
+	_, hasResult := msg["result"]
+	_, hasError := msg["error"]
+	if !hasResult && !hasError {
+		return body
+	}
+	if raw, ok := msg["id"]; ok && sameID(raw, id) {
+		return body
+	}
+	msg["id"] = id
+	out, err := json.Marshal(msg)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// validHeaderValue reports whether net/http will send s as a header value:
+// no control character other than a horizontal tab.
+func validHeaderValue(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c < 0x20 && c != '\t') || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }

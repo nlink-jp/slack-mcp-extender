@@ -15,8 +15,9 @@ by nlink-jp's servers and relays (standard library only).
 
 ### Added
 
-- **The MCP protocol headers on every POST.** A handshake session's messages
-  carry the negotiated `MCP-Protocol-Version` — required since 2025-06-18 and
+- **The MCP protocol headers.** A handshake session's messages after
+  `initialize`, and the DELETE that ends the session, carry the negotiated
+  `MCP-Protocol-Version` — required since 2025-06-18 and
   missing until now. A 2026-07-28 request carries its version, `Mcp-Method`,
   `Mcp-Name`, and the `Mcp-Param-*` headers a tool's schema asks for.
 - **Official tools with an invalid `x-mcp-header` declaration are left out of
@@ -27,7 +28,6 @@ by nlink-jp's servers and relays (standard library only).
   carries `resultType` and the extender's `serverInfo`.
 
 ### Changed
-
 
 - `make package` runs `govulncheck ./...` first (`make vuln`) and stops on a
   finding, so a release cannot be built past one.
@@ -54,6 +54,11 @@ by nlink-jp's servers and relays (standard library only).
   bound (an over-long SSE line used to end the stream silently).
 - **A request whose headers cannot be built is answered with `-32602` and not
   sent**; a batch is sent without protocol headers.
+- **A request gets one answer.** An answer Slack sends after the proxy has
+  answered the request at its 120-second timeout is logged and dropped instead
+  of reaching the agent as a second answer.
+- **An agent line that is JSON but not a JSON-RPC message gets `-32600`**
+  (Invalid Request); malformed JSON keeps `-32700`.
 
 ## [0.5.2] - 2026-11-04
 

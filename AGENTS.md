@@ -81,12 +81,17 @@ ttlMs and cacheScope) survive byte-for-byte.
 - **The HeaderMismatch retry is the only request the extender originates**
   (`internal/transport/mismatch.go`): once per request, refreshes serialized,
   up to 10 pages within 60 s, answers kept from the agent.
-- **Answers that would leave the agent waiting are answered at once** with
-  -32603 under the request's id: a non-2xx without a JSON-RPC body, an id:null
-  error, a 2xx that is not JSON or is empty, a stream ending without the
-  answer, a JSON body over 8 MiB, an SSE line or event over 1 MiB. The proxy
-  handles one request at a time, so any of these used to stop all agent input
-  for the 120-second timeout.
+- **Answers that would leave the agent waiting are answered at once.** A
+  response that names no request or the wrong one (an `id: null` error, 2xx or
+  not) is delivered under the request's id with Slack's own content; -32603 is
+  synthesized under the request's id for a non-2xx without a JSON-RPC body, a
+  2xx that is not JSON or is empty, a stream ending without the answer, a JSON
+  body over 8 MiB, and an SSE line or event over 1 MiB. The proxy handles one
+  request at a time, so any of these used to stop all agent input for the
+  120-second timeout.
+- **One request, one answer.** `readUpstream` drops a response to an id no
+  request is waiting for (one the 120 s timeout already answered) and logs it;
+  notifications and server-initiated requests still pass through.
 - **Injected answers are shaped with `server.ShapeResult`**; the extender does
   not check the version of a locally answered request (ADR-0005 §4).
 

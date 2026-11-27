@@ -138,6 +138,7 @@ Claude Desktop の MCP 登録を 1 つずつ**作成してください。
   App マニフェスト: [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 - [RFP（日本語）](docs/ja/slack-mcp-extender-rfp.ja.md) /
   [RFP (English)](docs/en/slack-mcp-extender-rfp.md)
+- [設計判断](docs/ja/adr/) — MCP のプロトコルの二つの時代をそのまま通す理由 (0005) など
 
 ## ライセンス
 

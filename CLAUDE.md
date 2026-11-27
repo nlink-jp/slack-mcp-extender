@@ -13,7 +13,10 @@ workspace CLAUDE.md) apply on top of these.
   requires of an HTTP client, through nlink-jp/mcp, never by hand: headers
   derived from each body, removing tools with invalid `x-mcp-header` marks,
   answering what Slack did not answer as JSON-RPC, and one retry of a
-  HeaderMismatch.
+  HeaderMismatch. One request gets one answer: a response to an id no request
+  is waiting for (one the 120 s timeout already answered) is logged and
+  dropped. Ids are matched by value (`jsonrpc.CanonicalID`), never by their
+  bytes.
 - **Single user token**: proxy forwarding and uploads share one OAuth session.
   Never introduce a second credential path.
 - **Containment is the caller's `work_dir`, named on every call** (ADR-0003).

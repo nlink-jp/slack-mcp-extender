@@ -42,7 +42,8 @@ subcommand — bot-identity uploads are already served by swrite).
     through; the transport adds what MCP 2026-07-28 requires of an HTTP client
     (headers derived from the body, removing tools with invalid `x-mcp-header`
     marks, answering what Slack did not answer as JSON-RPC, one HeaderMismatch
-    retry), and injected answers take the agent's era.
+    retry), injected answers take the agent's era, and an answer to a request
+    already answered is dropped.
 - **Two injected tools**:
 
 | Tool | Arguments | Behavior |

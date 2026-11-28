@@ -4,4 +4,4 @@ go 1.25.0
 
 require github.com/nlink-jp/pathguard v0.3.1
 
-require github.com/nlink-jp/mcp v0.2.0
+require github.com/nlink-jp/mcp v0.3.0

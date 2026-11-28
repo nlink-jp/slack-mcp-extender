@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The shared MCP protocol layer is updated to nlink-jp/mcp v0.3.0
+  (organization ADR-030 §6: the module at its latest tag). v0.3.0 changes only
+  the module's `ToolServer` — it answers the calls already received before it
+  returns at end of input, and refuses nil streams — which this relay does not
+  use (it uses the server package's lower layer), so its behaviour does not
+  change.
+
+
 ## [0.6.1] - 2026-11-27
 
 ### Changed

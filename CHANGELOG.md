@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-28
+
 ### Changed
 
 - The shared MCP protocol layer is updated to nlink-jp/mcp v0.3.0
